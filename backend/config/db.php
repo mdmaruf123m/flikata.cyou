@@ -1,0 +1,76 @@
+<?php
+/**
+ * Database Configuration & Global Helpers
+ * Flikata Backend Engine
+ */
+
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
+// Database Credentials
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'flikata_db');
+define('DB_USER', 'root');
+define('DB_PASS', '');
+define('DB_CHARSET', 'utf8mb4');
+
+function getDB() {
+    static $pdo = null;
+    if ($pdo === null) {
+        $dsn = "mysql:host=" . DB_HOST . ";dbname=" . DB_NAME . ";charset=" . DB_CHARSET;
+        $options = [
+            PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES   => false,
+        ];
+        try {
+            $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+        } catch (PDOException $e) {
+            echo json_encode([
+                'success' => false,
+                'message' => 'Database connection failed: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+    }
+    return $pdo;
+}
+
+function jsonResponse($success, $data = null, $message = '') {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success' => (bool)$success,
+        'message' => $message,
+        'data'    => $data
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function getAuthUser($pdo) {
+    $headers = getallheaders();
+    $token = null;
+    if (isset($headers['Authorization'])) {
+        $matches = [];
+        if (preg_match('/Bearer\s(\S+)/', $headers['Authorization'], $matches)) {
+            $token = $matches[1];
+        } else {
+            $token = trim($headers['Authorization']);
+        }
+    } elseif (isset($_REQUEST['auth_token'])) {
+        $token = $_REQUEST['auth_token'];
+    }
+
+    if (!$token) {
+        return null;
+    }
+
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE auth_token = ? LIMIT 1");
+    $stmt->execute([$token]);
+    return $stmt->fetch() ?: null;
+}
