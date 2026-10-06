@@ -33,15 +33,22 @@ data class Reaction(
 
 @JsonClass(generateAdapter = true)
 data class Comment(
-    val id: String,
-    val postId: String,
-    val authorName: String,
-    val authorAvatar: String,
-    val text: String,
-    val timestamp: String,
+    val id: String = "",
+    val postId: String = "",
+    val authorName: String = "",
+    val authorAvatar: String = "",
+    val text: String = "",
+    val timestamp: String = "",
     val likesCount: Int = 0,
     val isLiked: Boolean = false,
     val replies: List<Comment> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class CommentsListResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: List<Comment>? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -155,7 +162,7 @@ data class ReelModel(
     var likesCount: Int = 0,
     var commentsCount: Int = 0,
     var sharesCount: Int = 0,
-    var viewsCount: String = "1",
+    var viewsCount: String = "0",
     var isLiked: Boolean = false,
     var userReaction: String? = null,
     var isFollowing: Boolean = false,
@@ -201,5 +208,34 @@ data class StoriesResponse(
     val success: Boolean = false,
     val message: String? = null,
     val data: List<Story>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ReelsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: List<ReelModel>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ReelSettingsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: ReelSettingsData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class PresignedUploadData(
+    @Json(name = "upload_url") val uploadUrl: String = "",
+    @Json(name = "file_url") val fileUrl: String = "",
+    @Json(name = "bucket_id") val bucketId: Int? = null,
+    val key: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class PresignedUploadResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: PresignedUploadData? = null
 )
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * Toggle Post Like Endpoint
- * Flikata API
+ * Flikata API - Synchronized with post_reactions
  */
 
 require_once __DIR__ . '/../config/db.php';
@@ -34,17 +34,35 @@ if ($existing) {
     $del = $pdo->prepare("DELETE FROM post_likes WHERE post_id = ? AND user_id = ?");
     $del->execute([$postId, $user['id']]);
 
+    $delReac = $pdo->prepare("DELETE FROM post_reactions WHERE post_id = ? AND user_id = ?");
+    $delReac->execute([$postId, $user['id']]);
+
     $upd = $pdo->prepare("UPDATE posts SET likes_count = GREATEST(0, likes_count - 1) WHERE id = ?");
     $upd->execute([$postId]);
 
-    jsonResponse(true, ['is_liked' => false], 'Unliked post.');
+    $cnt = $pdo->prepare("SELECT likes_count FROM posts WHERE id = ?");
+    $cnt->execute([$postId]);
+    $likesCount = (int)$cnt->fetchColumn();
+
+    jsonResponse(true, ['is_liked' => false, 'likes_count' => $likesCount, 'emoji' => null], 'Unliked post.');
 } else {
     // Like
     $ins = $pdo->prepare("INSERT INTO post_likes (post_id, user_id) VALUES (?, ?)");
     $ins->execute([$postId, $user['id']]);
 
+    $insReac = $pdo->prepare("
+        INSERT INTO post_reactions (post_id, user_id, emoji) 
+        VALUES (?, ?, 'Like') 
+        ON DUPLICATE KEY UPDATE emoji = 'Like'
+    ");
+    $insReac->execute([$postId, $user['id']]);
+
     $upd = $pdo->prepare("UPDATE posts SET likes_count = likes_count + 1 WHERE id = ?");
     $upd->execute([$postId]);
 
-    jsonResponse(true, ['is_liked' => true], 'Liked post.');
+    $cnt = $pdo->prepare("SELECT likes_count FROM posts WHERE id = ?");
+    $cnt->execute([$postId]);
+    $likesCount = (int)$cnt->fetchColumn();
+
+    jsonResponse(true, ['is_liked' => true, 'likes_count' => $likesCount, 'emoji' => 'Like'], 'Liked post.');
 }

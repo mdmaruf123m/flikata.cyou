@@ -51,7 +51,7 @@ fun FacebookReactionPicker(
     modifier: Modifier = Modifier,
     onReactionSelected: (String) -> Unit
 ) {
-    var activeIndex by remember { mutableStateOf<Int?>(1) } // Default active on Love for preview
+    var activeIndex by remember { mutableStateOf<Int?>(null) } // Clean single row, no default raised item
 
     Surface(
         color = androidx.compose.material3.MaterialTheme.colorScheme.surface,

@@ -62,10 +62,16 @@ fun PostUploadPipeCard(
     ) {
         val animatedProgress by animateFloatAsState(
             targetValue = uploadState.progress.coerceIn(0f, 1f),
-            animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+            animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
             label = "pipe_progress"
         )
-        val percent = (animatedProgress * 100).toInt()
+        val percent = (animatedProgress * 100).toInt().coerceIn(0, 100)
+        val isStory = uploadState.postSnippet.contains("Story", ignoreCase = true)
+        val statusTitle = if (uploadState.isCompleted) {
+            if (isStory) "✓ Story Published!" else "✓ Post Published!"
+        } else {
+            if (isStory) "Sharing story..." else "Posting update..."
+        }
 
         Card(
             shape = RoundedCornerShape(12.dp),
@@ -120,7 +126,7 @@ fun PostUploadPipeCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = if (uploadState.isCompleted) "✓ Post Published!" else "Posting update...",
+                                text = statusTitle,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (uploadState.isCompleted) Color(0xFF45BD62) else MaterialTheme.colorScheme.onSurface

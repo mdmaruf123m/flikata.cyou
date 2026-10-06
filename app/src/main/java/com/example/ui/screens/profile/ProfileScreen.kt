@@ -1,5 +1,6 @@
 package com.example.ui.screens.profile
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -38,15 +39,26 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.widget.Toast
+import com.example.data.model.ReelModel
+import com.example.ui.components.VerifiedBadge
+import com.example.ui.viewmodel.Screen
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -99,6 +111,17 @@ fun ProfileScreen(
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
     val allPosts by viewModel.posts.collectAsState()
+    val allReelsList by viewModel.reels.collectAsState()
+    val selectedUserProfileId by viewModel.selectedUserProfileId.collectAsState()
+    val selectedUserProfileName by viewModel.selectedUserProfileName.collectAsState()
+    val context = LocalContext.current
+
+    val isOwnProfile = selectedUserProfileId == null || selectedUserProfileId == currentUser?.id
+
+    BackHandler(!isOwnProfile) {
+        viewModel.clearSelectedUserProfile()
+        onBack()
+    }
 
     val tabs = listOf("All", "Reels", "Photos", "About", "More ▾")
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -135,11 +158,48 @@ fun ProfileScreen(
     var showSettingsSheet by remember { mutableStateOf(false) }
     val settingsSheetState = rememberModalBottomSheetState()
 
-    val userPosts = allPosts.filter {
-        it.userId == currentUser?.id || it.authorName == currentUser?.fullName
+    val userPosts = remember(allPosts, isOwnProfile, selectedUserProfileId, selectedUserProfileName, currentUser) {
+        if (isOwnProfile) {
+            allPosts.filter { it.userId == currentUser?.id || it.authorName == currentUser?.fullName }
+        } else {
+            allPosts.filter { it.userId == selectedUserProfileId || (selectedUserProfileName != null && it.authorName.equals(selectedUserProfileName, ignoreCase = true)) }
+        }
     }
 
-    val userReels = userPosts.filter { it.imageUrl != null }
+    val displayUserName = if (isOwnProfile) (currentUser?.fullName ?: "User") else (selectedUserProfileName ?: userPosts.firstOrNull()?.authorName ?: "Flikata User")
+    val displayUserAvatar = if (isOwnProfile) (currentUser?.profilePic ?: "") else (userPosts.firstOrNull()?.authorAvatar ?: "")
+    val displayIsVerified = if (isOwnProfile) (currentUser?.isVerified ?: false) else (userPosts.firstOrNull()?.isVerified ?: false)
+    var isFollowingOtherUser by remember(selectedUserProfileId) { mutableStateOf(false) }
+
+    val userReels = remember(userPosts, allReelsList, isOwnProfile, selectedUserProfileId, selectedUserProfileName, currentUser) {
+        val videoPosts = userPosts.filter { !it.videoUrl.isNullOrBlank() || it.isVideo }
+        val matchingReels = allReelsList.filter { r ->
+            if (isOwnProfile) {
+                r.userId == currentUser?.id || r.authorName.equals(currentUser?.fullName, ignoreCase = true)
+            } else {
+                r.userId == selectedUserProfileId || (selectedUserProfileName != null && r.authorName.equals(selectedUserProfileName, ignoreCase = true))
+            }
+        }
+        val fromPosts = videoPosts.map { p ->
+            ReelModel(
+                id = "post_${p.id}",
+                userId = p.userId,
+                authorName = p.authorName,
+                authorAvatar = p.authorAvatar,
+                isVerified = p.isVerified,
+                mediaUrl = p.videoUrl ?: "",
+                caption = p.content.ifBlank { "Video Reel" },
+                audioTitle = "Original Audio - ${p.authorName}",
+                likesCount = p.likesCount,
+                commentsCount = p.commentsCount,
+                sharesCount = p.sharesCount,
+                viewsCount = "${(p.likesCount * 13 + 120)}",
+                isLiked = p.isLiked,
+                userReaction = p.userReaction
+            )
+        }
+        (fromPosts + matchingReels).distinctBy { it.mediaUrl.ifBlank { it.id } }
+    }
 
     val userPhotos = userPosts.mapNotNull { it.imageUrl }
 
@@ -202,10 +262,20 @@ fun ProfileScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CoverCircleButton(icon = Icons.Default.ArrowBack, onClick = onBack)
+                            CoverCircleButton(
+                                icon = Icons.Default.ArrowBack,
+                                onClick = {
+                                    if (!isOwnProfile) {
+                                        viewModel.clearSelectedUserProfile()
+                                    }
+                                    onBack()
+                                }
+                            )
 
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                CoverCircleButton(icon = Icons.Default.Edit, onClick = { viewModel.prepareEditProfile() })
+                                if (isOwnProfile) {
+                                    CoverCircleButton(icon = Icons.Default.Edit, onClick = { viewModel.prepareEditProfile() })
+                                }
                                 CoverCircleButton(icon = Icons.Default.Search, onClick = onSearchClick)
                                 CoverCircleButton(icon = Icons.Default.MoreHoriz, onClick = { showSettingsSheet = true })
                             }
@@ -224,7 +294,7 @@ fun ProfileScreen(
                                     shadowElevation = 4.dp
                                 ) {
                                     Text(
-                                        text = currentUser?.bio?.ifBlank { "Drop a thought..." } ?: "Drop a thought...",
+                                        text = if (isOwnProfile) (currentUser?.bio?.ifBlank { "Drop a thought..." } ?: "Drop a thought...") else "Welcome to my profile!",
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = textPrimary,
@@ -266,11 +336,15 @@ fun ProfileScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = currentUser?.fullName ?: "md sumon Islam",
+                                    text = displayUserName,
                                     fontSize = 22.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = textPrimary
                                 )
+                                if (displayIsVerified) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    VerifiedBadge(size = 18.dp)
+                                }
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Box(
                                     modifier = Modifier
@@ -291,65 +365,124 @@ fun ProfileScreen(
                             Spacer(modifier = Modifier.height(4.dp))
 
                             // Followers, Following, Posts line
+                            val followersCount = if (isOwnProfile) (currentUser?.followersCount ?: 0) else (if (isFollowingOtherUser) 1241 else 1240)
+                            val followingCount = if (isOwnProfile) (currentUser?.followingCount ?: 0) else 185
                             Text(
-                                text = "${currentUser?.followersCount ?: 0} followers • ${currentUser?.followingCount ?: 0} following • ${userPosts.size} posts",
+                                text = "$followersCount followers • $followingCount following • ${userPosts.size} posts",
                                 fontSize = 13.sp,
                                 color = textSecondary
                             )
 
                             Spacer(modifier = Modifier.height(18.dp))
 
-                            // Side-by-side Action Buttons ("Dashboard" & "+ Add to Story")
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Button(
-                                    onClick = { },
-                                    colors = ButtonDefaults.buttonColors(containerColor = FlikataPrimary),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("dashboard_btn")
-                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.BarChart,
-                                        contentDescription = "Dashboard",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Dashboard",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        color = Color.White
-                                    )
-                                }
-
-                                Button(
-                                    onClick = onCreateStoryClick,
-                                    colors = ButtonDefaults.buttonColors(containerColor = screenVariant),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(44.dp)
-                                        .testTag("add_to_story_btn")
+                            // Side-by-side Action Buttons
+                            if (isOwnProfile) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Add,
-                                        contentDescription = "Add Story",
-                                        tint = FlikataPrimary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Add to Story",
-                                        fontWeight = FontWeight.Bold,
-                                        color = FlikataPrimary,
-                                        fontSize = 14.sp
-                                    )
+                                    Button(
+                                        onClick = { },
+                                        colors = ButtonDefaults.buttonColors(containerColor = FlikataPrimary),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .testTag("dashboard_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.BarChart,
+                                            contentDescription = "Dashboard",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Dashboard",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = Color.White
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = onCreateStoryClick,
+                                        colors = ButtonDefaults.buttonColors(containerColor = screenVariant),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .testTag("add_to_story_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Add,
+                                            contentDescription = "Add Story",
+                                            tint = FlikataPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Add to Story",
+                                            fontWeight = FontWeight.Bold,
+                                            color = FlikataPrimary,
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                }
+                            } else {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Button(
+                                        onClick = { isFollowingOtherUser = !isFollowingOtherUser },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isFollowingOtherUser) screenVariant else FlikataPrimary
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .testTag("follow_user_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isFollowingOtherUser) Icons.Default.Check else Icons.Default.PersonAdd,
+                                            contentDescription = null,
+                                            tint = if (isFollowingOtherUser) FlikataPrimary else Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isFollowingOtherUser) "Following" else "Follow",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = if (isFollowingOtherUser) FlikataPrimary else Color.White
+                                        )
+                                    }
+
+                                    Button(
+                                        onClick = { viewModel.navigateTo(Screen.CHATS) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = screenVariant),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .testTag("message_user_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ChatBubbleOutline,
+                                            contentDescription = "Message",
+                                            tint = FlikataPrimary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Message",
+                                            fontWeight = FontWeight.Bold,
+                                            color = FlikataPrimary,
+                                            fontSize = 14.sp
+                                        )
+                                    }
                                 }
                             }
 
@@ -399,32 +532,40 @@ fun ProfileScreen(
                             .offset(y = 150.dp)
                     ) {
                         FlikataAvatar(
-                            name = currentUser?.fullName ?: "User",
-                            avatarUrl = currentUser?.profilePic,
+                            name = displayUserName,
+                            avatarUrl = displayUserAvatar.ifBlank { null },
                             size = 110.dp,
                             borderWidth = 4.dp,
                             borderColor = screenSurface,
-                            modifier = Modifier.clickable { viewModel.prepareEditProfile() }
+                            modifier = Modifier.clickable {
+                                if (isOwnProfile) {
+                                    viewModel.prepareEditProfile()
+                                } else if (displayUserAvatar.isNotBlank()) {
+                                    viewModel.openImageViewer(displayUserAvatar)
+                                }
+                            }
                         )
 
-                        // Camera overlay badge on avatar
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = (-4).dp, y = (-4).dp)
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(FlikataPrimary)
-                                .border(2.dp, screenSurface, CircleShape)
-                                .clickable { viewModel.prepareEditProfile() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CameraAlt,
-                                contentDescription = "Change Profile Picture",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
+                        // Camera overlay badge on avatar (only for own profile)
+                        if (isOwnProfile) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .offset(x = (-4).dp, y = (-4).dp)
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(FlikataPrimary)
+                                    .border(2.dp, screenSurface, CircleShape)
+                                    .clickable { viewModel.prepareEditProfile() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CameraAlt,
+                                    contentDescription = "Change Profile Picture",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -481,7 +622,8 @@ fun ProfileScreen(
                                                 onLikeClick = { viewModel.toggleLike(it) },
                                                 onReactionSelect = { postId, emoji -> viewModel.setReaction(postId, emoji) },
                                                 onImageClick = { imageUrl -> viewModel.openImageViewer(imageUrl) },
-                                                onDeletePost = { postId -> viewModel.deletePost(postId) }
+                                                onDeletePost = { postId -> viewModel.deletePost(postId) },
+                                                onEditPost = { postId, content, privacy -> viewModel.editPost(postId, content, privacy) }
                                             )
                                         }
                                     }
@@ -499,8 +641,22 @@ fun ProfileScreen(
                                             modifier = Modifier.padding(bottom = 10.dp)
                                         )
 
-                                        val chunkedReels = userReels.chunked(3)
-                                        chunkedReels.forEach { rowItems ->
+                                        if (userReels.isEmpty()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 32.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "No reels or videos uploaded yet",
+                                                    color = textSecondary,
+                                                    fontSize = 14.sp
+                                                )
+                                            }
+                                        } else {
+                                            val chunkedReels = userReels.chunked(3)
+                                            chunkedReels.forEach { rowItems ->
                                             Row(
                                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -512,9 +668,10 @@ fun ProfileScreen(
                                                             .aspectRatio(0.75f)
                                                             .clip(RoundedCornerShape(8.dp))
                                                             .background(Color.DarkGray)
+                                                            .clickable { viewModel.openReel(reel.id) }
                                                     ) {
                                                         AsyncImage(
-                                                            model = reel.imageUrl ?: reel.authorAvatar,
+                                                            model = reel.mediaUrl.ifBlank { reel.authorAvatar },
                                                             contentDescription = "Reel Thumbnail",
                                                             contentScale = ContentScale.Crop,
                                                             modifier = Modifier.fillMaxSize()
@@ -550,7 +707,7 @@ fun ProfileScreen(
                                                             )
                                                             Spacer(modifier = Modifier.width(3.dp))
                                                             Text(
-                                                                text = "${reel.likesCount * 12 + 140} views",
+                                                                text = "${reel.viewsCount.ifBlank { (reel.likesCount * 12 + 140).toString() }} views",
                                                                 color = Color.White,
                                                                 fontSize = 11.sp,
                                                                 fontWeight = FontWeight.Bold
@@ -567,6 +724,7 @@ fun ProfileScreen(
                                     }
                                 }
                             }
+                        }
 
                             "Photos" -> {
                                 Surface(color = screenSurface, modifier = Modifier.fillMaxWidth().padding(8.dp)) {
@@ -685,7 +843,30 @@ fun ProfileScreen(
     if (showSettingsSheet) {
         ProfileSettingsBottomSheet(
             sheetState = settingsSheetState,
+            isOwnProfile = isOwnProfile,
             onDismiss = { showSettingsSheet = false },
+            onOptionClick = { option ->
+                if (option == "Copy Link" || option.contains("Link", ignoreCase = true)) {
+                    val targetUserId = if (isOwnProfile) (currentUser?.id ?: "") else (selectedUserProfileId ?: "")
+                    val profileUrl = if (targetUserId.isNotBlank()) {
+                        "https://flikata.cyou/backend/profile.php?id=$targetUserId"
+                    } else {
+                        "https://flikata.cyou/backend/profile.php"
+                    }
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("Flikata Profile Link", profileUrl)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "Profile link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                } else if (option == "Share Profile") {
+                    val targetUserId = if (isOwnProfile) (currentUser?.id ?: "") else (selectedUserProfileId ?: "")
+                    val profileUrl = "https://flikata.cyou/backend/profile.php?id=$targetUserId"
+                    val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, "Check out this profile on Flikata:\n$profileUrl")
+                    }
+                    context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Profile"))
+                }
+            },
             onLogoutClick = { viewModel.logout() }
         )
     }

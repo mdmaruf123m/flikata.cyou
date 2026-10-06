@@ -30,6 +30,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -70,13 +71,27 @@ fun HomeScreen(
     val stories by viewModel.stories.collectAsState()
     val unreadNotificationsCount by viewModel.unreadNotificationsCount.collectAsState()
     val uploadState by viewModel.postUploadState.collectAsState()
+    val highlightedPostId by viewModel.highlightedPostId.collectAsState()
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+    LaunchedEffect(highlightedPostId, posts) {
+        if (!highlightedPostId.isNullOrBlank() && posts.isNotEmpty()) {
+            val target = highlightedPostId!!
+            val clean = target.removePrefix("post_")
+            val index = posts.indexOfFirst { it.id == target || it.id == clean || it.id == "post_$clean" }
+            if (index != -1) {
+                // Scroll to target shared post
+                val scrollIndex = if (uploadState.isUploading) index + 3 else index + 2
+                listState.animateScrollToItem(scrollIndex)
+            }
+        }
+    }
 
     val userAvatarUrl = currentUser?.profilePic ?: ""
 
     val bg = MaterialTheme.colorScheme.background
     val surfaceColor = MaterialTheme.colorScheme.surface
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
 
     Column(
         modifier = Modifier
@@ -87,6 +102,7 @@ fun HomeScreen(
         FlikataHeader(
             unreadNotificationsCount = unreadNotificationsCount,
             onSearchClick = { viewModel.navigateTo(Screen.SEARCH) },
+            onFriendsClick = { viewModel.navigateTo(Screen.FRIENDS) },
             onNotificationsClick = { viewModel.navigateTo(Screen.NOTIFICATIONS) },
             onMenuClick = onMenuClick
         )
@@ -117,11 +133,13 @@ fun HomeScreen(
                                     .padding(horizontal = 14.dp, vertical = 8.dp)
                             ) {
                                 // User Profile Avatar with Initials Logo Fallback
-                                FlikataAvatar(
-                                    name = currentUser?.fullName ?: "User",
-                                    avatarUrl = currentUser?.profilePic,
-                                    size = 40.dp
-                                )
+                                Box(modifier = Modifier.clickable { viewModel.openUserProfile(currentUser?.id ?: "") }) {
+                                    FlikataAvatar(
+                                        name = currentUser?.fullName ?: "User",
+                                        avatarUrl = currentUser?.profilePic,
+                                        size = 40.dp
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.width(10.dp))
 
@@ -213,7 +231,9 @@ fun HomeScreen(
                             onReactionSelect = { postId, emoji -> viewModel.setReaction(postId, emoji) },
                             onImageClick = { imageUrl -> viewModel.openImageViewer(imageUrl) },
                             onDeletePost = { postId -> viewModel.deletePost(postId) },
-                            onAddComment = { postId, text -> viewModel.addComment(postId, text) }
+                            onEditPost = { postId, content, privacy -> viewModel.editPost(postId, content, privacy) },
+                            onAddComment = { postId, text -> viewModel.addComment(postId, text) },
+                            onUserClick = { userId, authorName -> viewModel.openUserProfile(userId, authorName) }
                         )
                     }
                 }

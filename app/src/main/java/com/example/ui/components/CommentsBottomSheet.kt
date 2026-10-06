@@ -33,6 +33,7 @@ import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,8 +49,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.Comment
+import com.example.data.model.CommentsListResponse
 import com.example.data.model.Post
 import com.example.data.model.User
+import com.example.data.remote.ApiClient
 import com.example.ui.components.FlikataAvatar
 import com.example.ui.theme.FlikataDivider
 import com.example.ui.theme.FlikataPrimary
@@ -70,8 +73,21 @@ fun CommentsBottomSheet(
     var commentText by remember { mutableStateOf("") }
     var replyingToComment by remember { mutableStateOf<Comment?>(null) }
 
-    val commentsList = remember(post.commentsList) {
+    val commentsList = remember {
         mutableStateListOf<Comment>().apply { addAll(post.commentsList) }
+    }
+
+    LaunchedEffect(post.id) {
+        try {
+            val resp = ApiClient.apiService.getPostComments(post.id)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                val serverComments = resp.body()!!.data!!
+                if (serverComments.isNotEmpty()) {
+                    commentsList.clear()
+                    commentsList.addAll(serverComments)
+                }
+            }
+        } catch (_: Exception) {}
     }
 
     val sheetSurface = MaterialTheme.colorScheme.surface
@@ -249,7 +265,7 @@ fun CommentsBottomSheet(
                             decorationBox = { innerTextField ->
                                 if (commentText.isEmpty()) {
                                     Text(
-                                        text = "মন্তব্য করুন...",
+                                        text = "Write a comment...",
                                         color = textSecondary.copy(alpha = 0.7f),
                                         fontSize = 14.sp
                                     )

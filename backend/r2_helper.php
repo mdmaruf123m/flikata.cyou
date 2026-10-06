@@ -222,4 +222,68 @@ class CloudflareR2 {
         $stmt = $pdo->prepare("UPDATE r2_buckets SET used_bytes = used_bytes + ? WHERE id = ?");
         $stmt->execute([$bytes, $bucketId]);
     }
+
+    /**
+     * Generate an AWS SigV4 Presigned PUT URL for direct client upload to Cloudflare R2
+     */
+    public static function getPresignedPutUrl($bucket, $targetKey, $contentType = 'application/octet-stream', $expiresSeconds = 3600) {
+        $accountId  = trim($bucket['account_id']);
+        $bucketName = trim($bucket['bucket_name']);
+        $accessKey  = trim($bucket['access_key_id']);
+        $secretKey  = trim($bucket['secret_access_key']);
+        $publicUrl  = rtrim(trim($bucket['public_url']), '/');
+        $region     = 'auto';
+
+        $host = "{$accountId}.r2.cloudflarestorage.com";
+        $cleanKey = ltrim($targetKey, '/');
+        $uri = "/{$bucketName}/{$cleanKey}";
+        $timestamp = gmdate('Ymd\THis\Z');
+        $dateStamp = gmdate('Ymd');
+        $credentialScope = "{$dateStamp}/{$region}/s3/aws4_request";
+
+        $queryParams = [
+            'X-Amz-Algorithm'     => 'AWS4-HMAC-SHA256',
+            'X-Amz-Credential'    => "{$accessKey}/{$credentialScope}",
+            'X-Amz-Date'          => $timestamp,
+            'X-Amz-Expires'       => (string)$expiresSeconds,
+            'X-Amz-SignedHeaders' => 'host'
+        ];
+        ksort($queryParams);
+
+        $queryString = http_build_query($queryParams, '', '&', PHP_QUERY_RFC3986);
+
+        $canonicalHeaders = "host:{$host}\n";
+        $signedHeaders = "host";
+        $payloadHash = 'UNSIGNED-PAYLOAD';
+
+        $canonicalRequest = "PUT\n"
+            . $uri . "\n"
+            . $queryString . "\n"
+            . $canonicalHeaders . "\n"
+            . $signedHeaders . "\n"
+            . $payloadHash;
+
+        $stringToSign = "AWS4-HMAC-SHA256\n"
+            . $timestamp . "\n"
+            . $credentialScope . "\n"
+            . hash('sha256', $canonicalRequest);
+
+        $kSecret = 'AWS4' . $secretKey;
+        $kDate = hash_hmac('sha256', $dateStamp, $kSecret, true);
+        $kRegion = hash_hmac('sha256', $region, $kDate, true);
+        $kService = hash_hmac('sha256', 's3', $kRegion, true);
+        $kSigning = hash_hmac('sha256', 'aws4_request', $kService, true);
+        $signature = hash_hmac('sha256', $stringToSign, $kSigning);
+
+        $uploadUrl = "https://{$host}{$uri}?{$queryString}&X-Amz-Signature={$signature}";
+        $fileUrl = $publicUrl . '/' . $cleanKey;
+
+        return [
+            'success'    => true,
+            'upload_url' => $uploadUrl,
+            'file_url'   => $fileUrl,
+            'bucket_id'  => $bucket['id'],
+            'key'        => $cleanKey
+        ];
+    }
 }

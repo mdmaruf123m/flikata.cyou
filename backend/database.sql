@@ -146,6 +146,7 @@ CREATE TABLE IF NOT EXISTS `reel_likes` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
   `reel_id` INT NOT NULL,
   `user_id` INT NOT NULL,
+  `reaction` VARCHAR(50) DEFAULT 'Like',
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY `idx_reel_user_like` (`reel_id`, `user_id`),
   FOREIGN KEY (`reel_id`) REFERENCES `reels` (`id`) ON DELETE CASCADE,

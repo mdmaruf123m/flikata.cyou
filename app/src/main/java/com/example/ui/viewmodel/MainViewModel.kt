@@ -39,7 +39,8 @@ enum class Screen {
     STORY_VIEWER,
     FULL_IMAGE_VIEWER,
     NOTIFICATIONS,
-    MENU
+    MENU,
+    FRIENDS
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -48,6 +49,70 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val repository = FlikataRepository(db.userDao(), db.postDao(), db.chatDao())
 
     val isDarkMode = MutableStateFlow(false)
+    val highlightedPostId = MutableStateFlow<String?>(null)
+    val selectedUserProfileId = MutableStateFlow<String?>(null)
+    val selectedUserProfileName = MutableStateFlow<String?>(null)
+    val targetReelId = MutableStateFlow<String?>(null)
+
+    fun openPost(postId: String) {
+        highlightedPostId.value = postId
+        _currentScreen.value = Screen.HOME
+    }
+
+    fun clearHighlightedPost() {
+        highlightedPostId.value = null
+    }
+
+    fun openUserProfile(userId: String, userName: String = "") {
+        val myId = currentUser.value?.id ?: ""
+        if (userId.isNotBlank() && userId == myId) {
+            selectedUserProfileId.value = null
+            selectedUserProfileName.value = null
+            _currentScreen.value = Screen.PROFILE
+        } else {
+            selectedUserProfileId.value = userId.ifBlank { null }
+            selectedUserProfileName.value = userName.ifBlank { null }
+            _currentScreen.value = Screen.PROFILE
+        }
+    }
+
+    fun clearSelectedUserProfile() {
+        selectedUserProfileId.value = null
+        selectedUserProfileName.value = null
+    }
+
+    fun openReel(reelId: String) {
+        targetReelId.value = reelId
+        _currentScreen.value = Screen.REELS
+    }
+
+    init {
+        viewModelScope.launch {
+            repository.allPosts.collect { currentPosts ->
+                val videoReels = currentPosts.filter { !it.videoUrl.isNullOrBlank() }.map { p ->
+                    ReelModel(
+                        id = "post_${p.id}",
+                        userId = p.userId,
+                        authorName = p.authorName,
+                        authorAvatar = p.authorAvatar,
+                        isVerified = p.isVerified,
+                        mediaUrl = p.videoUrl!!,
+                        caption = p.content.ifBlank { "Video Reel" },
+                        audioTitle = "Original Audio - ${p.authorName}",
+                        likesCount = p.likesCount,
+                        commentsCount = p.commentsCount,
+                        sharesCount = p.sharesCount,
+                        isLiked = p.isLiked,
+                        userReaction = p.userReaction
+                    )
+                }
+                if (videoReels.isNotEmpty()) {
+                    val curr = _reels.value
+                    _reels.value = (curr + videoReels).distinctBy { it.mediaUrl }
+                }
+            }
+        }
+    }
 
     fun toggleDarkMode() {
         isDarkMode.value = !isDarkMode.value
@@ -105,6 +170,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val stories: StateFlow<List<Story>> = _stories.asStateFlow()
 
     fun addStory(storyImage: String?, textContent: String?, backgroundColor: String?) {
+        _currentScreen.value = Screen.HOME
+        _postUploadState.value = PostUploadState(
+            isUploading = true,
+            progress = 0.01f,
+            postSnippet = if (!storyImage.isNullOrBlank()) "Photo Story" else (textContent ?: "Text Story"),
+            postImage = storyImage,
+            postVideo = null,
+            isCompleted = false
+        )
+
         viewModelScope.launch {
             var finalStoryUrl: String? = null
 
@@ -127,7 +202,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             bytes = bytes,
                             fileName = "story_${System.currentTimeMillis()}.$ext",
                             mimeType = mime,
-                            folder = "stories"
+                            folder = "stories",
+                            onProgress = { p ->
+                                val scaled = (p * 0.90f).coerceIn(0.01f, 0.95f)
+                                _postUploadState.value = _postUploadState.value.copy(progress = scaled)
+                            }
                         )
                         if (uploadResult.isSuccess && !uploadResult.getOrNull().isNullOrBlank()) {
                             finalStoryUrl = uploadResult.getOrNull()
@@ -137,7 +216,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } catch (e: Exception) {
                     android.util.Log.e("FlikataStory", "Error uploading story image: ${e.message}", e)
                 }
+            } else {
+                _postUploadState.value = _postUploadState.value.copy(progress = 0.40f)
+                kotlinx.coroutines.delay(100)
+                _postUploadState.value = _postUploadState.value.copy(progress = 0.80f)
+                kotlinx.coroutines.delay(100)
             }
+
+            _postUploadState.value = _postUploadState.value.copy(progress = 0.95f)
 
             // Save story to MySQL database
             repository.addStory(
@@ -155,7 +241,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            _currentScreen.value = Screen.HOME
+            _postUploadState.value = _postUploadState.value.copy(isCompleted = true, progress = 1.0f)
+            kotlinx.coroutines.delay(1500)
+            _postUploadState.value = PostUploadState(isUploading = false)
         }
     }
 
@@ -207,10 +295,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun syncReelsFromServer() {
         viewModelScope.launch {
+            repository.syncPostsFromServer()
             val result = repository.syncReelsFromServer()
-            if (result.isSuccess) {
-                _reels.value = result.getOrNull() ?: emptyList()
+            val serverList = if (result.isSuccess) result.getOrNull() ?: emptyList() else emptyList()
+
+            // Also convert any video posts to reels so no video is ever missed!
+            val localPosts = repository.getAllPostsDirect()
+            val videoPostReels = localPosts.filter { !it.videoUrl.isNullOrBlank() }.map { p ->
+                ReelModel(
+                    id = "post_${p.id}",
+                    userId = p.userId,
+                    authorName = p.authorName,
+                    authorAvatar = p.authorAvatar,
+                    isVerified = p.isVerified,
+                    mediaUrl = p.videoUrl!!,
+                    caption = p.content.ifBlank { "Video Reel" },
+                    audioTitle = "Original Audio - ${p.authorName}",
+                    likesCount = p.likesCount,
+                    commentsCount = p.commentsCount,
+                    sharesCount = p.sharesCount,
+                    isLiked = p.isLiked,
+                    userReaction = p.userReaction
+                )
             }
+
+            val combined = (serverList + videoPostReels).distinctBy { it.mediaUrl }
+            _reels.value = combined
+
             val maxDur = repository.getReelMaxDurationSeconds()
             reelMaxDurationSeconds.value = maxDur
         }
@@ -235,7 +346,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (maxSeconds > 0 && durationSeconds > maxSeconds) {
-                val msg = "ভিডিওর দৈর্ঘ্য ($durationSeconds সেকেন্ড) সর্বোচ্চ অনুমোদিত সীমা ($maxSeconds সেকেন্ড)-এর বেশি।"
+                val msg = "Video duration ($durationSeconds s) exceeds maximum allowed limit ($maxSeconds s)."
                 android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
                 onResult(false, msg)
                 return@launch
@@ -249,13 +360,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (bytes == null || bytes.isEmpty()) {
-                val msg = "ভিডিও ফাইল লোড করা সম্ভব হয়নি।"
+                val msg = "Could not load video file."
                 android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
                 onResult(false, msg)
                 return@launch
             }
 
-            android.widget.Toast.makeText(context, "রিল আপলোড হচ্ছে...", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(context, "Uploading reel...", android.widget.Toast.LENGTH_SHORT).show()
 
             // 3. Upload to Cloudflare R2
             val uploadResult = repository.uploadMediaFile(
@@ -273,19 +384,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     caption = caption,
                     audioTitle = "Original Audio - ${currentUser.value?.fullName ?: "Me"}"
                 )
-                // 5. Also save to MySQL posts table for feed
-                repository.createPost(
-                    content = caption,
-                    videoUrl = cloudflareUrl,
-                    isVideo = true
-                )
                 syncReelsFromServer()
-                repository.syncPostsFromServer()
-                android.widget.Toast.makeText(context, "রিল সফলভাবে আপলোড হয়েছে!", android.widget.Toast.LENGTH_SHORT).show()
+                android.widget.Toast.makeText(context, "Reel uploaded successfully!", android.widget.Toast.LENGTH_SHORT).show()
                 onResult(true, null)
             } else {
                 val err = uploadResult.exceptionOrNull()?.message ?: "Upload failed"
-                android.widget.Toast.makeText(context, "আপলোড ব্যর্থ হয়েছে: $err", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "Upload failed: $err", android.widget.Toast.LENGTH_LONG).show()
                 onResult(false, err)
             }
         }
@@ -298,6 +402,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _reels.value = prev
             repository.deleteReel(reelId)
             syncReelsFromServer()
+            repository.syncPostsFromServer()
         }
     }
 
@@ -309,6 +414,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.addReel(mediaUrl, caption, audioTitle)
             syncReelsFromServer()
+        }
+    }
+
+    fun toggleReelLike(reelId: String, reaction: String = "Like") {
+        viewModelScope.launch {
+            repository.toggleReelLike(reelId, reaction)
+        }
+    }
+
+    fun setReelReaction(reelId: String, reaction: String) {
+        viewModelScope.launch {
+            repository.setReelReaction(reelId, reaction)
+        }
+    }
+
+    fun recordReelView(reelId: String) {
+        viewModelScope.launch {
+            repository.recordReelView(reelId)
+        }
+    }
+
+    fun addReelComment(reelId: String, text: String, onAdded: (ReelCommentItem) -> Unit) {
+        viewModelScope.launch {
+            val user = currentUser.value
+            val authorName = user?.fullName ?: "Me"
+            val authorAvatar = user?.profilePic ?: ""
+            val isVerified = user?.isVerified ?: false
+
+            val result = repository.addReelComment(reelId, text)
+            val newComment = if (result.isSuccess && result.getOrNull() != null) {
+                val data = result.getOrNull()!!
+                ReelCommentItem(
+                    id = data.id,
+                    authorName = data.authorName,
+                    authorAvatar = data.authorAvatar.ifEmpty { authorAvatar },
+                    text = data.text,
+                    timestamp = "Just now",
+                    isVerified = isVerified
+                )
+            } else {
+                ReelCommentItem(
+                    id = System.currentTimeMillis().toString(),
+                    authorName = authorName,
+                    authorAvatar = authorAvatar,
+                    text = text,
+                    timestamp = "Just now",
+                    isVerified = isVerified
+                )
+            }
+            onAdded(newComment)
         }
     }
 
@@ -618,32 +773,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         postSelectedIsVideo.value = false
         _currentScreen.value = Screen.HOME
 
+        val snippet = if (content.isNotEmpty()) {
+            if (content.length > 50) content.take(50) + "..." else content
+        } else if (isVideo) {
+            "Video post"
+        } else {
+            "Photo post"
+        }
+
+        // Start upload progress smoothly from 1% immediately so the UI responds instantly
+        _postUploadState.value = PostUploadState(
+            isUploading = true,
+            progress = 0.01f,
+            postSnippet = snippet,
+            postImage = if (!isVideo) imgUrl else null,
+            postVideo = if (isVideo) videoUrl else null,
+            isVideo = isVideo,
+            isCompleted = false
+        )
+
         viewModelScope.launch {
-            val snippet = if (content.isNotEmpty()) {
-                if (content.length > 50) content.take(50) + "..." else content
-            } else if (isVideo) {
-                "Video post"
-            } else {
-                "Photo post"
-            }
-
-            // Start upload progress from 10%
-            _postUploadState.value = PostUploadState(
-                isUploading = true,
-                progress = 0.1f,
-                postSnippet = snippet,
-                postImage = if (!isVideo) imgUrl else null,
-                postVideo = if (isVideo) videoUrl else null,
-                isVideo = isVideo,
-                isCompleted = false
-            )
-
             // Upload to Cloudflare R2 if local image or video exists
             var uploadedImageUrl: String? = null
             var uploadedVideoUrl: String? = null
 
             if (!imgUrl.isNullOrBlank()) {
-                _postUploadState.value = _postUploadState.value.copy(progress = 0.35f)
                 val bytes: ByteArray? = try {
                     val file = java.io.File(imgUrl)
                     if (file.exists()) {
@@ -659,10 +813,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (bytes != null && bytes.isNotEmpty()) {
-                    _postUploadState.value = _postUploadState.value.copy(progress = 0.60f)
                     val ext = if (imgUrl.endsWith(".png")) "png" else if (imgUrl.endsWith(".webp")) "webp" else "jpg"
                     val mime = if (ext == "png") "image/png" else if (ext == "webp") "image/webp" else "image/jpeg"
-                    val uploadResult = repository.uploadMediaFile(bytes, "post_${System.currentTimeMillis()}.$ext", mime)
+                    val uploadResult = repository.uploadMediaFile(
+                        bytes = bytes,
+                        fileName = "post_${System.currentTimeMillis()}.$ext",
+                        mimeType = mime,
+                        folder = "images",
+                        onProgress = { p ->
+                            val scaled = (p * 0.90f).coerceIn(0.01f, 0.95f)
+                            _postUploadState.value = _postUploadState.value.copy(progress = scaled)
+                        }
+                    )
                     if (uploadResult.isSuccess) {
                         uploadedImageUrl = uploadResult.getOrNull()
                         android.util.Log.d("FlikataUpload", "Successfully uploaded to Cloudflare R2: $uploadedImageUrl")
@@ -673,7 +835,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             if (!videoUrl.isNullOrBlank()) {
-                _postUploadState.value = _postUploadState.value.copy(progress = 0.45f)
                 val bytes: ByteArray? = try {
                     val file = java.io.File(videoUrl)
                     if (file.exists()) {
@@ -688,15 +849,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 if (bytes != null && bytes.isNotEmpty()) {
-                    _postUploadState.value = _postUploadState.value.copy(progress = 0.70f)
-                    val uploadResult = repository.uploadMediaFile(bytes, "reel_${System.currentTimeMillis()}.mp4", "video/mp4")
+                    val uploadResult = repository.uploadMediaFile(
+                        bytes = bytes,
+                        fileName = "reel_${System.currentTimeMillis()}.mp4",
+                        mimeType = "video/mp4",
+                        folder = "reels",
+                        onProgress = { p ->
+                            val scaled = (p * 0.90f).coerceIn(0.01f, 0.95f)
+                            _postUploadState.value = _postUploadState.value.copy(progress = scaled)
+                        }
+                    )
                     if (uploadResult.isSuccess) {
                         uploadedVideoUrl = uploadResult.getOrNull()
                     }
                 }
             }
 
-            _postUploadState.value = _postUploadState.value.copy(progress = 0.90f)
+            if (imgUrl.isNullOrBlank() && videoUrl.isNullOrBlank()) {
+                _postUploadState.value = _postUploadState.value.copy(progress = 0.35f)
+                delay(100)
+                _postUploadState.value = _postUploadState.value.copy(progress = 0.75f)
+                delay(100)
+            }
+
+            _postUploadState.value = _postUploadState.value.copy(progress = 0.95f)
 
             // Save actual post to local database / repository with real Cloudflare R2 URL
             repository.createPost(
@@ -709,12 +885,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.syncPostsFromServer()
 
-            // If it is a video post or reel, ALSO add to Reels so it appears in Reels feed!
+            // Sync reels and posts so the new video post and reel appear across feeds
             if (isVideo && uploadedVideoUrl != null) {
-                addReel(
-                    mediaUrl = uploadedVideoUrl,
-                    caption = if (content.isNotBlank()) content else "New Reel by ${currentUser.value?.fullName ?: "Me"}"
-                )
+                syncReelsFromServer()
             }
 
             // Mark completion
@@ -751,6 +924,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deletePost(postId)
             repository.syncPostsFromServer()
+            syncReelsFromServer()
+        }
+    }
+
+    fun editPost(postId: String, newContent: String, newPrivacy: String) {
+        viewModelScope.launch {
+            val result = repository.editPost(postId, newContent, newPrivacy)
+            if (result.isSuccess) {
+                android.widget.Toast.makeText(
+                    getApplication(),
+                    "Post updated successfully!",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            } else {
+                val err = result.exceptionOrNull()?.message ?: "Edit failed"
+                android.widget.Toast.makeText(getApplication(), err, android.widget.Toast.LENGTH_SHORT).show()
+                repository.syncPostsFromServer()
+            }
         }
     }
 

@@ -179,7 +179,7 @@ fun StoryViewerScreen(
             Column {
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Top Segmented Progress Bars ("পাইপ এর মত অপশন")
+                // Top Segmented Progress Bars
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

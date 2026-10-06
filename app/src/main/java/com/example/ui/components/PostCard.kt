@@ -1,9 +1,15 @@
 package com.example.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,25 +23,41 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.ReportProblem
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,7 +102,9 @@ fun PostCard(
     onReactionSelect: (String, String?) -> Unit = { _, _ -> },
     onImageClick: (String) -> Unit = {},
     onDeletePost: (String) -> Unit = {},
+    onEditPost: (String, String, String) -> Unit = { _, _, _ -> },
     onAddComment: (String, String) -> Unit = { _, _ -> },
+    onUserClick: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     var showReactionPicker by remember { mutableStateOf(false) }
@@ -89,11 +113,16 @@ fun PostCard(
     var showReactionsSheet by remember { mutableStateOf(false) }
     var showCommentsSheet by remember { mutableStateOf(false) }
     var showOptionsSheet by remember { mutableStateOf(false) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
 
     val reactionsSheetState = rememberModalBottomSheetState()
     val commentsSheetState = rememberModalBottomSheetState()
     val optionsSheetState = rememberModalBottomSheetState()
+    val shareSheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     val isOwnPost = currentUser != null && (currentUser.id == post.userId || currentUser.fullName == post.authorName)
 
@@ -117,7 +146,10 @@ fun PostCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { onUserClick(post.userId, post.authorName) }
+                ) {
                     FlikataAvatar(
                         name = post.authorName,
                         avatarUrl = post.authorAvatar,
@@ -151,8 +183,13 @@ fun PostCard(
                                 fontSize = 12.sp,
                                 color = textSecondary
                             )
+                            val privacyIcon = when {
+                                post.privacy.equals("Only Me", ignoreCase = true) || post.privacy.equals("Private", ignoreCase = true) -> Icons.Default.Lock
+                                post.privacy.equals("Friends", ignoreCase = true) -> Icons.Default.People
+                                else -> Icons.Default.Public
+                            }
                             Icon(
-                                imageVector = Icons.Default.Public,
+                                imageVector = privacyIcon,
                                 contentDescription = post.privacy,
                                 tint = textSecondary,
                                 modifier = Modifier.size(12.dp)
@@ -213,7 +250,9 @@ fun PostCard(
                         modifier = Modifier.fillMaxSize(),
                         autoPlay = false,
                         repeat = true,
-                        showControls = true
+                        showControls = true,
+                        showRedScrubber = true,
+                        scrubberBottomPadding = 0.dp
                     )
                 }
             } else if (!post.imageUrl.isNullOrBlank()) {
@@ -406,7 +445,7 @@ fun PostCard(
 
                     Row(
                         modifier = Modifier
-                            .clickable { }
+                            .clickable { showShareSheet = true }
                             .padding(horizontal = 16.dp, vertical = 8.dp)
                             .testTag("share_post_${post.id}"),
                         verticalAlignment = Alignment.CenterVertically
@@ -439,8 +478,97 @@ fun PostCard(
                 scope.launch { optionsSheetState.hide() }.invokeOnCompletion { showOptionsSheet = false }
             },
             onDeleteClick = {
-                onDeletePost(post.id)
-                scope.launch { optionsSheetState.hide() }.invokeOnCompletion { showOptionsSheet = false }
+                scope.launch { optionsSheetState.hide() }.invokeOnCompletion {
+                    showOptionsSheet = false
+                    showDeleteConfirmDialog = true
+                }
+            },
+            onEditClick = {
+                scope.launch { optionsSheetState.hide() }.invokeOnCompletion {
+                    showOptionsSheet = false
+                    showEditDialog = true
+                }
+            },
+            onCopyLinkClick = {
+                scope.launch { optionsSheetState.hide() }.invokeOnCompletion {
+                    showOptionsSheet = false
+                    val isVideo = !post.videoUrl.isNullOrBlank() || post.isVideo
+                    val cleanId = post.id.removePrefix("post_")
+                    val shareUrl = if (isVideo) {
+                        "https://flikata.cyou/backend/post.php?reel_id=$cleanId"
+                    } else {
+                        "https://flikata.cyou/backend/post.php?id=$cleanId"
+                    }
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip = ClipData.newPlainText("Flikata Link", shareUrl)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(context, "Link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                }
+            },
+            onShareClick = {
+                scope.launch { optionsSheetState.hide() }.invokeOnCompletion {
+                    showOptionsSheet = false
+                    showShareSheet = true
+                }
+            }
+        )
+    }
+
+    // Delete Confirmation Dialog
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = {
+                Text(
+                    text = "Delete Post?",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to permanently delete this post? This cannot be undone.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        onDeletePost(post.id)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FlikataError),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Delete", color = androidx.compose.ui.graphics.Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
+
+    // Modern Share Bottom Sheet
+    if (showShareSheet) {
+        ShareBottomSheet(
+            post = post,
+            sheetState = shareSheetState,
+            onDismiss = {
+                scope.launch { shareSheetState.hide() }.invokeOnCompletion { showShareSheet = false }
+            }
+        )
+    }
+
+    if (showEditDialog) {
+        EditPostDialog(
+            post = post,
+            onDismiss = { showEditDialog = false },
+            onSave = { newContent, newPrivacy ->
+                showEditDialog = false
+                onEditPost(post.id, newContent, newPrivacy)
             }
         )
     }
@@ -474,7 +602,10 @@ fun PostOptionsBottomSheet(
     isOwnPost: Boolean,
     sheetState: SheetState,
     onDismiss: () -> Unit,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onEditClick: () -> Unit = {},
+    onCopyLinkClick: () -> Unit = {},
+    onShareClick: () -> Unit = {}
 ) {
     val sheetSurface = androidx.compose.material3.MaterialTheme.colorScheme.surface
     val sheetOnSurface = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
@@ -497,7 +628,7 @@ fun PostOptionsBottomSheet(
                     icon = Icons.Default.Edit,
                     iconTint = FlikataPrimary,
                     title = "Edit Post",
-                    onClick = onDismiss
+                    onClick = onEditClick
                 )
 
                 PostOptionRow(
@@ -511,14 +642,14 @@ fun PostOptionsBottomSheet(
                     icon = Icons.Default.ContentCopy,
                     iconTint = FlikataTextSecondary,
                     title = "Copy Link",
-                    onClick = onDismiss
+                    onClick = onCopyLinkClick
                 )
 
                 PostOptionRow(
                     icon = Icons.Default.Share,
                     iconTint = FlikataTextSecondary,
                     title = "Share to...",
-                    onClick = onDismiss
+                    onClick = onShareClick
                 )
             } else {
                 // Someone Else's Post Options (Matching Screenshot 2)
@@ -533,14 +664,14 @@ fun PostOptionsBottomSheet(
                     icon = Icons.Default.ContentCopy,
                     iconTint = FlikataTextSecondary,
                     title = "Copy Link",
-                    onClick = onDismiss
+                    onClick = onCopyLinkClick
                 )
 
                 PostOptionRow(
                     icon = Icons.Default.Share,
                     iconTint = FlikataTextSecondary,
                     title = "Share to...",
-                    onClick = onDismiss
+                    onClick = onShareClick
                 )
             }
 
@@ -576,5 +707,155 @@ private fun PostOptionRow(
             fontWeight = FontWeight.Medium,
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
         )
+    }
+}
+
+@Composable
+fun EditPostDialog(
+    post: Post,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var contentText by remember { mutableStateOf(post.content) }
+    var selectedPrivacy by remember { mutableStateOf(post.privacy.ifBlank { "Public" }) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                // Header with title and close
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Edit Post",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Privacy selector chips
+                Text(
+                    text = "Who can see your post?",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Public
+                    FilterChip(
+                        selected = selectedPrivacy.equals("Public", ignoreCase = true),
+                        onClick = { selectedPrivacy = "Public" },
+                        label = { Text("Public", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(14.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = FlikataPrimary,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White
+                        )
+                    )
+
+                    // Only Me (Private)
+                    FilterChip(
+                        selected = selectedPrivacy.equals("Only Me", ignoreCase = true) || selectedPrivacy.equals("Private", ignoreCase = true),
+                        onClick = { selectedPrivacy = "Only Me" },
+                        label = { Text("Only Me", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(14.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = FlikataPrimary,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White
+                        )
+                    )
+
+                    // Friends
+                    FilterChip(
+                        selected = selectedPrivacy.equals("Friends", ignoreCase = true),
+                        onClick = { selectedPrivacy = "Friends" },
+                        label = { Text("Friends", fontSize = 12.sp) },
+                        leadingIcon = {
+                            Icon(Icons.Default.People, contentDescription = null, modifier = Modifier.size(14.dp))
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = FlikataPrimary,
+                            selectedLabelColor = Color.White,
+                            selectedLeadingIconColor = Color.White
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Text field for post content
+                OutlinedTextField(
+                    value = contentText,
+                    onValueChange = { contentText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    placeholder = { Text("What's on your mind?", fontSize = 14.sp) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = FlikataPrimary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Buttons: Cancel & Save
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    Button(
+                        onClick = {
+                            onSave(contentText, selectedPrivacy)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = FlikataPrimary),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Save Changes", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }

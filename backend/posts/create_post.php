@@ -53,19 +53,23 @@ $stmt->execute([
 
 $postId = $pdo->lastInsertId();
 
-// If this post has a video, automatically make it available in Reels as well
+// If this post has a video, automatically make it available in Reels as well (without duplicates)
 if ($videoUrl) {
-    $rStmt = $pdo->prepare("
-        INSERT INTO reels (user_id, media_url, caption, audio_title, bucket_id)
-        VALUES (?, ?, ?, ?, ?)
-    ");
-    $rStmt->execute([
-        $user['id'],
-        $videoUrl,
-        $content ?: 'New Reel by ' . $user['full_name'],
-        'Original Audio - ' . $user['full_name'],
-        $bucketId
-    ]);
+    $chkStmt = $pdo->prepare("SELECT id FROM reels WHERE media_url = ? LIMIT 1");
+    $chkStmt->execute([$videoUrl]);
+    if (!$chkStmt->fetch()) {
+        $rStmt = $pdo->prepare("
+            INSERT INTO reels (user_id, media_url, caption, audio_title, bucket_id)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $rStmt->execute([
+            $user['id'],
+            $videoUrl,
+            $content ?: 'New Reel by ' . $user['full_name'],
+            'Original Audio - ' . $user['full_name'],
+            $bucketId
+        ]);
+    }
 }
 
 $postObj = [

@@ -19,7 +19,7 @@ data class BackgroundGradientItem(
 }
 
 object PostBackgroundHelper {
-    // Rich list of Single Solid Colors (উপরের লাইনে শুধুই সিঙ্গেল কালার)
+    // Rich list of Single Solid Colors (Horizontal scrollable)
     val singleColors = listOf(
         BackgroundColorItem("solid_black", "Black", Color(0xFF121212)),
         BackgroundColorItem("solid_red", "Red", Color(0xFFE53935)),
@@ -45,7 +45,7 @@ object PostBackgroundHelper {
         BackgroundColorItem("solid_ruby", "Ruby", Color(0xFF8B0000))
     )
 
-    // Rich list of Multi-color Gradients (নিচের লাইনে গ্রেডিয়েন্ট কালার)
+    // Rich list of Multi-color Gradients (Horizontal scrollable)
     val gradientColors = listOf(
         BackgroundGradientItem("gradient_sunset", "Sunset Fire", listOf(Color(0xFFFF512F), Color(0xFFDD2476))),
         BackgroundGradientItem("gradient_ocean_blue", "Ocean Blue", listOf(Color(0xFF2196F3), Color(0xFF002244))),

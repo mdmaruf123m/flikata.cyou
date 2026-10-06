@@ -30,17 +30,39 @@ interface PostDao {
     @Query("SELECT * FROM posts ORDER BY createdAt DESC")
     fun getAllPosts(): Flow<List<PostEntity>>
 
+    @Query("SELECT * FROM posts ORDER BY createdAt DESC")
+    suspend fun getAllPostsList(): List<PostEntity>
+
+    @Query("SELECT * FROM posts WHERE videoUrl IS NOT NULL AND videoUrl != '' ORDER BY createdAt DESC")
+    suspend fun getVideoPosts(): List<PostEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPost(post: PostEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPosts(posts: List<PostEntity>)
 
-    @Query("UPDATE posts SET userReaction = :emoji, isLiked = CASE WHEN :emoji IS NULL THEN 0 ELSE 1 END WHERE id = :postId")
+    @Query("""
+        UPDATE posts 
+        SET userReaction = :emoji, 
+            likesCount = CASE 
+                WHEN :emoji IS NULL AND isLiked = 1 THEN MAX(0, likesCount - 1)
+                WHEN :emoji IS NOT NULL AND isLiked = 0 THEN likesCount + 1
+                ELSE likesCount
+            END,
+            isLiked = CASE WHEN :emoji IS NULL THEN 0 ELSE 1 END 
+        WHERE id = :postId
+    """)
     suspend fun updateReaction(postId: String, emoji: String?)
 
     @Query("UPDATE posts SET likesCount = CASE WHEN isLiked = 1 THEN likesCount - 1 ELSE likesCount + 1 END, isLiked = CASE WHEN isLiked = 1 THEN 0 ELSE 1 END WHERE id = :postId")
     suspend fun toggleLike(postId: String)
+
+    @Query("UPDATE posts SET commentsCount = commentsCount + 1 WHERE id = :postId")
+    suspend fun incrementCommentsCount(postId: String)
+
+    @Query("UPDATE posts SET content = :content, privacy = :privacy WHERE id = :postId")
+    suspend fun updatePost(postId: String, content: String, privacy: String)
 
     @Query("DELETE FROM posts WHERE id = :postId")
     suspend fun deletePost(postId: String)

@@ -39,14 +39,17 @@ $comments = $stmt->fetchAll();
 $formatted = array_map(function($c) {
     return [
         'id'            => (string)$c['id'],
+        'postId'        => (string)($c['post_id'] ?? ''),
         'authorName'    => $c['author_name'],
         'authorAvatar'  => $c['author_avatar'] ?: '',
         'isVerified'    => (bool)$c['is_verified'],
         'text'          => $c['text'],
         'timestamp'     => $c['created_at'],
-        'reactionEmoji' => $c['reaction_emoji'],
+        'reactionEmoji' => $c['reaction_emoji'] ?? null,
         'likesCount'    => (int)$c['likes_count'],
-        'parentId'      => $c['parent_id']
+        'isLiked'       => false,
+        'parentId'      => $c['parent_id'],
+        'replies'       => []
     ];
 }, $comments);
 

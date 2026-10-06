@@ -7,14 +7,17 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,12 +44,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -67,8 +75,11 @@ fun FlikataVideoPlayer(
     repeat: Boolean = true,
     isMutedDefault: Boolean = false,
     showControls: Boolean = true,
+    showRedScrubber: Boolean = true,
+    scrubberBottomPadding: Dp = 0.dp,
     resizeMode: Int = AspectRatioFrameLayout.RESIZE_MODE_FIT,
-    onDoubleTap: (() -> Unit)? = null
+    onSingleTap: (() -> Unit)? = null,
+    onDoubleTapWithOffset: ((Offset) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -79,6 +90,9 @@ fun FlikataVideoPlayer(
     var currentProgress by remember { mutableFloatStateOf(0f) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var currentPositionMs by remember { mutableLongStateOf(0L) }
+
+    // Flash Play/Pause icon badge on tap
+    var playPauseBadge by remember { mutableStateOf<Boolean?>(null) } // true=play, false=pause
 
     val exoPlayer = remember(videoUri) {
         ExoPlayer.Builder(context).build().apply {
@@ -96,6 +110,25 @@ fun FlikataVideoPlayer(
         }
     }
 
+    // React to autoPlay changes (e.g. when scrolling in VerticalPager!)
+    LaunchedEffect(autoPlay) {
+        if (autoPlay) {
+            exoPlayer.playWhenReady = true
+            exoPlayer.play()
+            isPlaying = true
+        } else {
+            exoPlayer.playWhenReady = false
+            exoPlayer.pause()
+            isPlaying = false
+        }
+    }
+
+    // React to mute toggle
+    LaunchedEffect(isMutedDefault) {
+        isMuted = isMutedDefault
+        exoPlayer.volume = if (isMutedDefault) 0f else 1f
+    }
+
     // Sync isPlaying state with ExoPlayer listener
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
@@ -105,7 +138,10 @@ fun FlikataVideoPlayer(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) {
-                    durationMs = exoPlayer.duration.coerceAtLeast(0L)
+                    val d = exoPlayer.duration
+                    if (d > 0L) {
+                        durationMs = d
+                    }
                 }
             }
         }
@@ -125,7 +161,7 @@ fun FlikataVideoPlayer(
                     exoPlayer.playWhenReady = false
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    if (isPlaying) {
+                    if (autoPlay) {
                         exoPlayer.playWhenReady = true
                     }
                 }
@@ -138,20 +174,29 @@ fun FlikataVideoPlayer(
         }
     }
 
-    // Periodic progress tracker
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
+    // Continuous progress and duration tracking loop
+    LaunchedEffect(exoPlayer) {
+        while (true) {
             val dur = exoPlayer.duration
             val pos = exoPlayer.currentPosition
-            currentPositionMs = pos
-            if (dur > 0) {
+            currentPositionMs = pos.coerceAtLeast(0L)
+            if (dur > 0L) {
+                durationMs = dur
                 currentProgress = (pos.toFloat() / dur.toFloat()).coerceIn(0f, 1f)
             }
-            delay(200)
+            delay(100)
         }
     }
 
-    // Auto-hide controls overlay after 3 seconds
+    // Auto-hide play/pause indicator badge
+    LaunchedEffect(playPauseBadge) {
+        if (playPauseBadge != null) {
+            delay(750)
+            playPauseBadge = null
+        }
+    }
+
+    // Auto-hide overlay controls
     LaunchedEffect(showOverlayControls) {
         if (showOverlayControls && isPlaying) {
             delay(3000)
@@ -162,14 +207,30 @@ fun FlikataVideoPlayer(
     Box(
         modifier = modifier
             .background(Color.Black)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                showOverlayControls = !showOverlayControls
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = { offset ->
+                        onDoubleTapWithOffset?.invoke(offset)
+                    },
+                    onTap = {
+                        if (onSingleTap != null) {
+                            onSingleTap.invoke()
+                        } else {
+                            if (exoPlayer.isPlaying) {
+                                exoPlayer.pause()
+                                isPlaying = false
+                                playPauseBadge = false
+                            } else {
+                                exoPlayer.play()
+                                isPlaying = true
+                                playPauseBadge = true
+                            }
+                        }
+                    }
+                )
             }
     ) {
-        // ExoPlayer AndroidView
+        // ExoPlayer View
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
@@ -189,7 +250,27 @@ fun FlikataVideoPlayer(
             modifier = Modifier.fillMaxSize()
         )
 
-        // Overlay Controls
+        // Center Play / Pause Indicator Badge that flashes on tap
+        if (playPauseBadge != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(76.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .zIndex(20f),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (playPauseBadge == true) Icons.Default.PlayArrow else Icons.Default.Pause,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(44.dp)
+                )
+            }
+        }
+
+        // Standard Overlay Controls (if enabled)
         if (showControls) {
             AnimatedVisibility(
                 visible = showOverlayControls || !isPlaying,
@@ -209,13 +290,15 @@ fun FlikataVideoPlayer(
                             .size(56.dp)
                             .clip(CircleShape)
                             .background(Color.Black.copy(alpha = 0.65f))
-                            .clickable {
-                                if (exoPlayer.isPlaying) {
-                                    exoPlayer.pause()
-                                    isPlaying = false
-                                } else {
-                                    exoPlayer.play()
-                                    isPlaying = true
+                            .pointerInput(Unit) {
+                                detectTapGestures {
+                                    if (exoPlayer.isPlaying) {
+                                        exoPlayer.pause()
+                                        isPlaying = false
+                                    } else {
+                                        exoPlayer.play()
+                                        isPlaying = true
+                                    }
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -253,7 +336,7 @@ fun FlikataVideoPlayer(
                         }
                     }
 
-                    // Bottom Bar (Progress indicator + Time)
+                    // Bottom Bar (Time display)
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
@@ -263,6 +346,7 @@ fun FlikataVideoPlayer(
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Text(
@@ -271,20 +355,6 @@ fun FlikataVideoPlayer(
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium
                             )
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            LinearProgressIndicator(
-                                progress = { currentProgress },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(4.dp)
-                                    .clip(RoundedCornerShape(2.dp)),
-                                color = Color(0xFF1877F2),
-                                trackColor = Color.White.copy(alpha = 0.3f)
-                            )
-
-                            Spacer(modifier = Modifier.width(8.dp))
 
                             Text(
                                 text = formatTime(durationMs),
@@ -295,6 +365,93 @@ fun FlikataVideoPlayer(
                         }
                     }
                 }
+            }
+        }
+
+        // BRIGHT RED SEEKBAR / SCRUBBER PIPE (Like Facebook / TikTok / YouTube Shorts)
+        // Always rendered and visible at the bottom of the video, easily draggable!
+        if (showRedScrubber) {
+            var isScrubbing by remember { mutableStateOf(false) }
+            var scrubProgress by remember { mutableFloatStateOf(0f) }
+            val activeProgress = if (isScrubbing) scrubProgress else currentProgress
+
+            val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = scrubberBottomPadding)
+                    .height(36.dp)
+                    .zIndex(50f)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onPress = { offset ->
+                                isScrubbing = true
+                                val ratio = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                scrubProgress = ratio
+                                val totalDur = if (exoPlayer.duration > 0) exoPlayer.duration else durationMs
+                                if (totalDur > 0) {
+                                    val seekTarget = (ratio * totalDur).toLong()
+                                    exoPlayer.seekTo(seekTarget)
+                                }
+                                tryAwaitRelease()
+                                isScrubbing = false
+                            }
+                        )
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                isScrubbing = true
+                                val ratio = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                scrubProgress = ratio
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val ratio = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                scrubProgress = ratio
+                                val totalDur = if (exoPlayer.duration > 0) exoPlayer.duration else durationMs
+                                if (totalDur > 0) {
+                                    val seekTarget = (ratio * totalDur).toLong()
+                                    exoPlayer.seekTo(seekTarget)
+                                }
+                            },
+                            onDragEnd = { isScrubbing = false },
+                            onDragCancel = { isScrubbing = false }
+                        )
+                    },
+                contentAlignment = Alignment.BottomStart
+            ) {
+                // Background Track: Gray/Translucent Pipe
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(if (isScrubbing) 6.dp else 4.dp)
+                        .background(Color.White.copy(alpha = 0.35f))
+                )
+
+                // Played Progress Track: SOLID RADIANT RED PIPE
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(activeProgress)
+                        .height(if (isScrubbing) 6.dp else 4.dp)
+                        .background(Color(0xFFFF0000))
+                )
+
+                // Red Dragging Knob / Thumb (Always visible so the user can easily see and grab it!)
+                val thumbOffset = ((screenWidth * activeProgress) - 7.dp).coerceAtLeast(0.dp)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = thumbOffset, y = 4.dp)
+                        .size(if (isScrubbing) 16.dp else 12.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFFFF0000))
+                        .border(1.5.dp, Color.White, CircleShape)
+                )
             }
         }
     }

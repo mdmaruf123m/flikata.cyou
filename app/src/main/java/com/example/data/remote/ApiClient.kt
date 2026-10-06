@@ -21,7 +21,7 @@ object ApiClient {
         }
 
     private val loggingInterceptor = HttpLoggingInterceptor().apply {
-        level = HttpLoggingInterceptor.Level.BODY
+        level = HttpLoggingInterceptor.Level.HEADERS
     }
 
     private val trustAllCerts = arrayOf<TrustManager>(
@@ -32,18 +32,26 @@ object ApiClient {
         }
     )
 
-    private val sslContext = SSLContext.getInstance("SSL").apply {
-        init(null, trustAllCerts, SecureRandom())
-    }
+    private val okHttpClient: OkHttpClient by lazy {
+        val builder = OkHttpClient.Builder()
+            .addInterceptor(loggingInterceptor)
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
 
-    private val okHttpClient = OkHttpClient.Builder()
-        .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-        .hostnameVerifier { _, _ -> true }
-        .addInterceptor(loggingInterceptor)
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .build()
+        try {
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(null, trustAllCerts, SecureRandom())
+            val trustManager = trustAllCerts[0] as X509TrustManager
+            builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+            builder.hostnameVerifier { _, _ -> true }
+        } catch (e: Throwable) {
+            android.util.Log.w("ApiClient", "Custom TLS initialization fallback on older device: ${e.message}")
+        }
+
+        builder.build()
+    }
 
     private val moshi = Moshi.Builder()
         .addLast(KotlinJsonAdapterFactory())

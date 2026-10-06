@@ -8,7 +8,11 @@ require_once __DIR__ . '/../config/db.php';
 $pdo = getDB();
 
 $currentUser = getAuthUser($pdo);
-$currentUserId = $currentUser ? $currentUser['id'] : 0;
+$currentUserId = $currentUser ? (int)$currentUser['id'] : 0;
+$userParam = (int)($_GET['user_id'] ?? 0);
+if (!$currentUserId && $userParam) {
+    $currentUserId = $userParam;
+}
 
 $page = max(1, (int)($_GET['page'] ?? 1));
 $limit = min(50, max(1, (int)($_GET['limit'] ?? 20)));
@@ -25,10 +29,16 @@ $stmt = $pdo->prepare("
         (SELECT COUNT(*) FROM comments WHERE post_id = p.id) AS real_comments_count
     FROM posts p
     JOIN users u ON p.user_id = u.id
+    WHERE (
+        p.privacy = 'Public' 
+        OR p.privacy IS NULL 
+        OR p.privacy = '' 
+        OR p.user_id = ?
+    )
     ORDER BY p.id DESC
     LIMIT ? OFFSET ?
 ");
-$stmt->execute([$currentUserId, $currentUserId, $limit, $offset]);
+$stmt->execute([$currentUserId, $currentUserId, $currentUserId, $limit, $offset]);
 $posts = $stmt->fetchAll();
 
 $formattedPosts = [];

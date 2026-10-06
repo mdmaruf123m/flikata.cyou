@@ -29,6 +29,14 @@ if (!$mediaUrl) {
     jsonResponse(false, null, 'Video media URL is required.');
 }
 
+// Check if reel with this media_url already exists
+$checkStmt = $pdo->prepare("SELECT id FROM reels WHERE media_url = ? LIMIT 1");
+$checkStmt->execute([$mediaUrl]);
+$existing = $checkStmt->fetch();
+if ($existing) {
+    jsonResponse(true, ['reel_id' => $existing['id']], 'Reel already registered.');
+}
+
 $stmt = $pdo->prepare("
     INSERT INTO reels (user_id, media_url, caption, audio_title, bucket_id)
     VALUES (?, ?, ?, ?, ?)

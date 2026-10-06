@@ -52,17 +52,17 @@ backend/
 
 ### Step 1: Import Database
 1. Open **phpMyAdmin** or your MySQL command line.
-2. Create a new database, for example `flikata_db` with `utf8mb4_unicode_ci` collation.
+2. Select database `flikata.bd` with `utf8mb4_unicode_ci` collation.
 3. Import the file `database.sql`.
 
 ### Step 2: Configure Database Connection
-Open `backend/config/db.php` and set your MySQL database credentials:
+Already pre-configured in `backend/config/db.php`:
 
 ```php
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'flikata_db');
-define('DB_USER', 'your_db_username');
-define('DB_PASS', 'your_db_password');
+define('DB_NAME', 'flikata.bd');
+define('DB_USER', 'flikata.bd');
+define('DB_PASS', 'flikata.bd');
 ```
 
 ---

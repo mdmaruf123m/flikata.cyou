@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -42,6 +43,7 @@ import com.example.ui.theme.FlikataTextPrimary
 @Composable
 fun ProfileSettingsBottomSheet(
     sheetState: SheetState,
+    isOwnProfile: Boolean = true,
     onDismiss: () -> Unit,
     onOptionClick: (String) -> Unit = {},
     onLogoutClick: () -> Unit = {}
@@ -62,76 +64,78 @@ fun ProfileSettingsBottomSheet(
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "Profile Settings",
+                text = if (isOwnProfile) "Profile Settings" else "Profile Options",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = sheetOnSurface,
                 modifier = Modifier.padding(vertical = 12.dp)
             )
 
-            // 1. Dashboard
-            BottomSheetMenuItem(
-                icon = Icons.Default.BarChart,
-                iconTint = Color(0xFF1877F2),
-                bgColor = Color(0xFF1877F2).copy(alpha = 0.15f),
-                title = "Dashboard",
-                onClick = {
-                    onOptionClick("Dashboard")
-                    onDismiss()
-                }
-            )
+            if (isOwnProfile) {
+                // 1. Dashboard
+                BottomSheetMenuItem(
+                    icon = Icons.Default.BarChart,
+                    iconTint = Color(0xFF1877F2),
+                    bgColor = Color(0xFF1877F2).copy(alpha = 0.15f),
+                    title = "Dashboard",
+                    onClick = {
+                        onOptionClick("Dashboard")
+                        onDismiss()
+                    }
+                )
 
-            // 2. Pages
-            BottomSheetMenuItem(
-                icon = Icons.Default.Flag,
-                iconTint = Color(0xFFF7B125),
-                bgColor = Color(0xFFF7B125).copy(alpha = 0.15f),
-                title = "Pages",
-                onClick = {
-                    onOptionClick("Pages")
-                    onDismiss()
-                }
-            )
+                // 2. Pages
+                BottomSheetMenuItem(
+                    icon = Icons.Default.Flag,
+                    iconTint = Color(0xFFF7B125),
+                    bgColor = Color(0xFFF7B125).copy(alpha = 0.15f),
+                    title = "Pages",
+                    onClick = {
+                        onOptionClick("Pages")
+                        onDismiss()
+                    }
+                )
 
-            // 3. Groups
-            BottomSheetMenuItem(
-                icon = Icons.Default.Group,
-                iconTint = Color(0xFF42B72A),
-                bgColor = Color(0xFF42B72A).copy(alpha = 0.15f),
-                title = "Groups",
-                onClick = {
-                    onOptionClick("Groups")
-                    onDismiss()
-                }
-            )
+                // 3. Groups
+                BottomSheetMenuItem(
+                    icon = Icons.Default.Group,
+                    iconTint = Color(0xFF42B72A),
+                    bgColor = Color(0xFF42B72A).copy(alpha = 0.15f),
+                    title = "Groups",
+                    onClick = {
+                        onOptionClick("Groups")
+                        onDismiss()
+                    }
+                )
 
-            // 4. Verified
-            BottomSheetMenuItem(
-                icon = Icons.Default.Verified,
-                iconTint = Color(0xFF00A884),
-                bgColor = Color(0xFF00A884).copy(alpha = 0.15f),
-                title = "Verified",
-                onClick = {
-                    onOptionClick("Verified")
-                    onDismiss()
-                }
-            )
+                // 4. Verified
+                BottomSheetMenuItem(
+                    icon = Icons.Default.Verified,
+                    iconTint = Color(0xFF00A884),
+                    bgColor = Color(0xFF00A884).copy(alpha = 0.15f),
+                    title = "Verified",
+                    onClick = {
+                        onOptionClick("Verified")
+                        onDismiss()
+                    }
+                )
 
-            // 5. Settings
-            BottomSheetMenuItem(
-                icon = Icons.Default.Settings,
-                iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                bgColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
-                title = "Settings",
-                onClick = {
-                    onOptionClick("Settings")
-                    onDismiss()
-                }
-            )
+                // 5. Settings
+                BottomSheetMenuItem(
+                    icon = Icons.Default.Settings,
+                    iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    bgColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant,
+                    title = "Settings",
+                    onClick = {
+                        onOptionClick("Settings")
+                        onDismiss()
+                    }
+                )
 
-            Divider(color = sheetOutline, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 10.dp))
+                Divider(color = sheetOutline, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 10.dp))
+            }
 
-            // 6. Copy Profile Link
+            // Copy Profile Link (available for both own profile and others)
             BottomSheetMenuItem(
                 icon = Icons.Default.ContentCopy,
                 iconTint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
@@ -143,19 +147,34 @@ fun ProfileSettingsBottomSheet(
                 }
             )
 
-            Divider(color = sheetOutline, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 10.dp))
+            if (!isOwnProfile) {
+                BottomSheetMenuItem(
+                    icon = Icons.Default.Share,
+                    iconTint = Color(0xFF1877F2),
+                    bgColor = Color(0xFF1877F2).copy(alpha = 0.15f),
+                    title = "Share Profile",
+                    onClick = {
+                        onOptionClick("Share Profile")
+                        onDismiss()
+                    }
+                )
+            }
 
-            // 7. Log Out
-            BottomSheetMenuItem(
-                icon = Icons.Default.Logout,
-                iconTint = Color(0xFFD32F2F),
-                bgColor = Color(0xFFFFEBEE),
-                title = "Log Out",
-                onClick = {
-                    onDismiss()
-                    onLogoutClick()
-                }
-            )
+            if (isOwnProfile) {
+                Divider(color = sheetOutline, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 10.dp))
+
+                // 7. Log Out
+                BottomSheetMenuItem(
+                    icon = Icons.Default.Logout,
+                    iconTint = Color(0xFFD32F2F),
+                    bgColor = Color(0xFFFFEBEE),
+                    title = "Log Out",
+                    onClick = {
+                        onDismiss()
+                        onLogoutClick()
+                    }
+                )
+            }
         }
     }
 }

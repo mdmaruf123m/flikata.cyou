@@ -10,21 +10,65 @@ import com.example.data.model.ChatMessage
 import com.example.data.model.Comment
 import com.example.data.model.Post
 import com.example.data.model.Reaction
+import com.example.data.model.ReelModel
+import com.example.data.model.ReelSettingsData
 import com.example.data.model.Story
 import com.example.data.model.User
 import com.example.data.remote.ApiClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.Buffer
+import okio.BufferedSink
+import okio.ForwardingSink
+import okio.buffer
 import java.util.UUID
+
+private class ChunkedProgressRequestBody(
+    private val bytes: ByteArray,
+    private val mediaType: MediaType?,
+    private val onProgress: (Float) -> Unit
+) : RequestBody() {
+    override fun contentType() = mediaType
+    override fun contentLength() = bytes.size.toLong()
+
+    override fun writeTo(sink: BufferedSink) {
+        val total = bytes.size.toLong()
+        if (total <= 0L) {
+            onProgress(1f)
+            return
+        }
+        var written = 0L
+        val chunkSize = 32 * 1024 // 32 KB chunk for smooth network streaming
+        var offset = 0
+        while (offset < bytes.size) {
+            val len = minOf(chunkSize, bytes.size - offset)
+            sink.write(bytes, offset, len)
+            sink.flush()
+            offset += len
+            written += len
+            val progress = (written.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+            onProgress(progress)
+        }
+    }
+}
 
 class FlikataRepository(
     private val userDao: UserDao,
     private val postDao: PostDao,
     private val chatDao: ChatDao
 ) {
+    suspend fun getAllPostsDirect(): List<Post> {
+        return postDao.getAllPostsList().map { it.toModel() }
+    }
+
+    suspend fun getVideoPostsDirect(): List<Post> {
+        return postDao.getVideoPosts().map { it.toModel() }
+    }
     val loggedInUser: Flow<User?> = userDao.getLoggedInUserFlow().map { entity ->
         entity?.toModel()
     }
@@ -121,7 +165,8 @@ class FlikataRepository(
 
     suspend fun syncPostsFromServer(): Result<List<Post>> {
         return try {
-            val response = ApiClient.apiService.getPosts()
+            val user = userDao.getLoggedInUser()
+            val response = ApiClient.apiService.getPosts(userId = user?.id)
             if (response.isSuccessful) {
                 val posts = response.body() ?: emptyList()
                 postDao.clearPosts()
@@ -131,6 +176,27 @@ class FlikataRepository(
                 Result.success(posts)
             } else {
                 Result.failure(Exception("Failed to fetch posts from server"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun editPost(postId: String, content: String, privacy: String): Result<Boolean> {
+        val user = userDao.getLoggedInUser() ?: return Result.failure(Exception("Please log in first"))
+        return try {
+            val resp = ApiClient.apiService.editPost(
+                postId = postId,
+                userId = user.id,
+                content = content,
+                privacy = privacy
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                postDao.updatePost(postId, content, privacy)
+                syncPostsFromServer()
+                Result.success(true)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to edit post"))
             }
         } catch (e: Exception) {
             Result.failure(e)
@@ -216,14 +282,56 @@ class FlikataRepository(
         bytes: ByteArray, 
         fileName: String, 
         mimeType: String,
-        folder: String? = null
+        folder: String? = null,
+        onProgress: (Float) -> Unit = {}
     ): Result<String> {
+        val targetFolder = folder ?: if (mimeType.startsWith("video")) "reels" else "images"
+
+        // 1. Try Direct Presigned Cloudflare R2 Upload first (bypasses any PHP upload size limits!)
+        try {
+            val presignedResp = ApiClient.apiService.getUploadUrl(
+                folder = targetFolder,
+                filename = fileName,
+                mime = mimeType
+            )
+            if (presignedResp.isSuccessful && presignedResp.body()?.success == true) {
+                val uploadData = presignedResp.body()?.data
+                if (uploadData != null && uploadData.uploadUrl.isNotBlank()) {
+                    val client = okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                        .writeTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+
+                    val reqBody = ChunkedProgressRequestBody(bytes, mimeType.toMediaTypeOrNull(), onProgress)
+                    val request = okhttp3.Request.Builder()
+                        .url(uploadData.uploadUrl)
+                        .put(reqBody)
+                        .addHeader("Content-Type", mimeType)
+                        .build()
+
+                    val directResp = client.newCall(request).execute()
+                    if (directResp.isSuccessful) {
+                        onProgress(1f)
+                        android.util.Log.d("FlikataUpload", "Direct Cloudflare R2 upload SUCCESS: ${uploadData.fileUrl}")
+                        return Result.success(uploadData.fileUrl)
+                    } else {
+                        android.util.Log.w("FlikataUpload", "Direct R2 upload returned ${directResp.code}, falling back to upload.php")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("FlikataUpload", "Direct R2 presigned attempt failed: ${e.message}, falling back to upload.php")
+        }
+
+        // 2. Fallback to upload.php
         return try {
-            val reqBody = bytes.toRequestBody(mimeType.toMediaTypeOrNull())
-            val part = MultipartBody.Part.createFormData("file", fileName, reqBody)
-            val folderPart = folder?.toRequestBody("text/plain".toMediaTypeOrNull())
+            val countingBody = ChunkedProgressRequestBody(bytes, mimeType.toMediaTypeOrNull(), onProgress)
+            val part = MultipartBody.Part.createFormData("file", fileName, countingBody)
+            val folderPart = targetFolder.toRequestBody("text/plain".toMediaTypeOrNull())
             val response = ApiClient.apiService.uploadMedia(part, folderPart)
             if (response.isSuccessful && response.body()?.success == true) {
+                onProgress(1f)
                 val url = response.body()?.data?.url
                 if (!url.isNullOrBlank()) {
                     Result.success(url)
@@ -245,6 +353,7 @@ class FlikataRepository(
         if (user != null) {
             try {
                 ApiClient.apiService.toggleLike(postId, user.id)
+                syncPostsFromServer()
             } catch (_: Exception) {}
         }
     }
@@ -267,7 +376,8 @@ class FlikataRepository(
             val user = userDao.getLoggedInUser()
             val resp = ApiClient.apiService.getReels(user?.id)
             if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
-                Result.success(resp.body()!!.data!!)
+                val uniqueReels = resp.body()!!.data!!.distinctBy { it.mediaUrl }
+                Result.success(uniqueReels)
             } else {
                 Result.success(emptyList())
             }
@@ -312,6 +422,74 @@ class FlikataRepository(
         }
     }
 
+    suspend fun toggleReelLike(reelId: String, reaction: String = "Like"): Result<Boolean> {
+        val user = userDao.getLoggedInUser() ?: return Result.failure(Exception("Please log in first"))
+        return try {
+            val resp = ApiClient.apiService.toggleReelLike(reelId, user.id, reaction)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to like reel"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun setReelReaction(reelId: String, reaction: String): Result<Boolean> {
+        val user = userDao.getLoggedInUser() ?: return Result.failure(Exception("Please log in first"))
+        return try {
+            val resp = ApiClient.apiService.setReelReaction(reelId, user.id, reaction)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to set reaction"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun recordReelView(reelId: String): Result<Boolean> {
+        val user = userDao.getLoggedInUser()
+        return try {
+            val resp = ApiClient.apiService.recordReelView(reelId, user?.id)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(true)
+            } else {
+                Result.failure(Exception("Failed to record view"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun addReelComment(reelId: String, text: String): Result<Comment?> {
+        val user = userDao.getLoggedInUser() ?: return Result.failure(Exception("Please log in first"))
+        return try {
+            val targetPostId = if (reelId.startsWith("post_")) reelId.removePrefix("post_") else null
+            val targetReelId = if (reelId.startsWith("post_")) null else reelId
+            val resp = ApiClient.apiService.addComment(
+                postId = targetPostId,
+                reelId = targetReelId,
+                userId = user.id,
+                text = text
+            )
+            if (targetPostId != null) {
+                try {
+                    postDao.incrementCommentsCount(targetPostId)
+                } catch (_: Exception) {}
+            }
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(resp.body()?.data)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to add comment"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getReelMaxDurationSeconds(): Int {
         return try {
             val resp = ApiClient.apiService.getReelSettings()
@@ -328,10 +506,24 @@ class FlikataRepository(
     suspend fun setReaction(postId: String, emoji: String?) {
         postDao.updateReaction(postId, emoji)
         val user = userDao.getLoggedInUser()
-        if (user != null && emoji != null) {
+        if (user != null) {
             try {
-                ApiClient.apiService.setReaction(postId, user.id, emoji)
+                ApiClient.apiService.setReaction(postId, user.id, emoji ?: "")
+                syncPostsFromServer()
             } catch (_: Exception) {}
+        }
+    }
+
+    suspend fun getPostComments(postId: String): Result<List<Comment>> {
+        return try {
+            val resp = ApiClient.apiService.getPostComments(postId)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.success(emptyList())
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

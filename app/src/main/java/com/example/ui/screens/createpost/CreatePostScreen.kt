@@ -138,7 +138,7 @@ fun CreatePostScreen(
             if (maxSeconds > 0 && durationSeconds > maxSeconds) {
                 android.widget.Toast.makeText(
                     context,
-                    "ভিডিওর দৈর্ঘ্য ($durationSeconds সেকেন্ড) সর্বোচ্চ সীমা ($maxSeconds সেকেন্ড)-এর বেশি।",
+                    "Video duration ($durationSeconds s) exceeds maximum limit ($maxSeconds s).",
                     android.widget.Toast.LENGTH_LONG
                 ).show()
                 return@rememberLauncherForActivityResult
@@ -442,9 +442,9 @@ fun CreatePostScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // Row 1: Single Colors (শুধুমাত্র সিঙ্গেল কালার, অনুভূমিক স্ক্রলেবল)
+                        // Row 1: Single Colors
                         Text(
-                            text = "Single Colors (একক কালার)", 
+                            text = "Single Colors", 
                             fontSize = 12.sp, 
                             fontWeight = FontWeight.SemiBold,
                             color = FlikataTextSecondary
@@ -490,9 +490,9 @@ fun CreatePostScreen(
 
                         Spacer(modifier = Modifier.height(14.dp))
 
-                        // Row 2: Gradient Colors (শুধুমাত্র গ্রেডিয়েন্ট কালার, অনুভূমিক স্ক্রলেবল)
+                        // Row 2: Gradient Colors
                         Text(
-                            text = "Gradient Colors (গ্রেডিয়েন্ট কালার)", 
+                            text = "Gradient Colors", 
                             fontSize = 12.sp, 
                             fontWeight = FontWeight.SemiBold,
                             color = FlikataTextSecondary

@@ -3,8 +3,14 @@ package com.example.data.remote
 import com.example.data.model.AuthResponse
 import com.example.data.model.ChatMessage
 import com.example.data.model.CommentResponse
+import com.example.data.model.CommentsListResponse
 import com.example.data.model.GenericResponse
 import com.example.data.model.Post
+import com.example.data.model.PresignedUploadResponse
+import com.example.data.model.ReelModel
+import com.example.data.model.ReelsResponse
+import com.example.data.model.ReelSettingsData
+import com.example.data.model.ReelSettingsResponse
 import com.example.data.model.StoriesResponse
 import com.example.data.model.Story
 import com.example.data.model.UploadResponse
@@ -41,6 +47,13 @@ interface FlikataApiService {
         @Field("password") password: String
     ): Response<AuthResponse>
 
+    @GET("get_upload_url.php")
+    suspend fun getUploadUrl(
+        @Query("folder") folder: String = "reels",
+        @Query("filename") filename: String,
+        @Query("mime") mime: String = "video/mp4"
+    ): Response<PresignedUploadResponse>
+
     @Multipart
     @POST("upload.php")
     suspend fun uploadMedia(
@@ -66,6 +79,15 @@ interface FlikataApiService {
     ): Response<List<Post>>
 
     @FormUrlEncoded
+    @POST("posts/edit_post.php")
+    suspend fun editPost(
+        @Field("post_id") postId: String,
+        @Field("user_id") userId: String,
+        @Field("content") content: String,
+        @Field("privacy") privacy: String
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
     @POST("posts/toggle_like.php")
     suspend fun toggleLike(
         @Field("post_id") postId: String,
@@ -88,6 +110,11 @@ interface FlikataApiService {
         @Field("user_id") userId: String,
         @Field("text") text: String
     ): Response<CommentResponse>
+
+    @GET("comments/get_comments.php")
+    suspend fun getPostComments(
+        @Query("post_id") postId: String
+    ): Response<CommentsListResponse>
 
     @GET("chats/get_conversations.php")
     suspend fun getChats(
@@ -116,7 +143,7 @@ interface FlikataApiService {
     @GET("reels/get_reels.php")
     suspend fun getReels(
         @Query("user_id") userId: String? = null
-    ): Response<ApiResponse<List<ReelModel>>>
+    ): Response<ReelsResponse>
 
     @FormUrlEncoded
     @POST("reels/add_reel.php")
@@ -134,8 +161,31 @@ interface FlikataApiService {
         @Field("user_id") userId: String
     ): Response<GenericResponse>
 
+    @FormUrlEncoded
+    @POST("reels/toggle_like.php")
+    suspend fun toggleReelLike(
+        @Field("reel_id") reelId: String,
+        @Field("user_id") userId: String,
+        @Field("reaction") reaction: String? = "Like"
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("reels/set_reaction.php")
+    suspend fun setReelReaction(
+        @Field("reel_id") reelId: String,
+        @Field("user_id") userId: String,
+        @Field("reaction") reaction: String
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("reels/record_view.php")
+    suspend fun recordReelView(
+        @Field("reel_id") reelId: String,
+        @Field("user_id") userId: String? = null
+    ): Response<GenericResponse>
+
     @GET("reels/reel_settings.php")
-    suspend fun getReelSettings(): Response<ApiResponse<ReelSettingsData>>
+    suspend fun getReelSettings(): Response<ReelSettingsResponse>
 
     @GET("stories/get_stories.php")
     suspend fun getStories(

@@ -22,6 +22,7 @@ import com.example.ui.screens.auth.RegisterScreen
 import com.example.ui.screens.chats.ChatDetailScreen
 import com.example.ui.screens.chats.ChatsScreen
 import com.example.ui.screens.createpost.CreatePostScreen
+import com.example.ui.screens.friends.FriendsScreen
 import com.example.ui.screens.home.HomeScreen
 import com.example.ui.screens.menu.MenuScreen
 import com.example.ui.screens.notifications.NotificationScreen
@@ -44,7 +45,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        handleDeepLink(intent)
+        try {
+            enableEdgeToEdge()
+        } catch (e: Throwable) {
+            android.util.Log.w("MainActivity", "enableEdgeToEdge not fully supported on this OS: ${e.message}")
+        }
 
         setContent {
             val isDarkMode by viewModel.isDarkMode.collectAsState()
@@ -52,22 +58,69 @@ class MainActivity : ComponentActivity() {
 
             val isTransparentStatusBar = currentScreen == Screen.PROFILE || currentScreen == Screen.REELS || currentScreen == Screen.STORY_VIEWER || currentScreen == Screen.CREATE_STORY
 
-            // Update status bar & nav bar icon colors according to theme
-            WindowCompat.getInsetsController(window, window.decorView).apply {
-                isAppearanceLightStatusBars = if (isTransparentStatusBar) false else !isDarkMode
-                isAppearanceLightNavigationBars = !isDarkMode
+            // Update status bar & nav bar icon colors according to theme safely
+            try {
+                val controller = WindowCompat.getInsetsController(window, window.decorView)
+                controller.isAppearanceLightStatusBars = if (isTransparentStatusBar) false else !isDarkMode
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    controller.isAppearanceLightNavigationBars = !isDarkMode
+                    window.navigationBarColor = if (isDarkMode) AndroidColor.parseColor("#18191A") else AndroidColor.WHITE
+                } else {
+                    window.navigationBarColor = AndroidColor.BLACK
+                }
+                window.statusBarColor = if (isTransparentStatusBar) {
+                    AndroidColor.TRANSPARENT
+                } else if (isDarkMode) {
+                    AndroidColor.parseColor("#18191A")
+                } else {
+                    AndroidColor.WHITE
+                }
+            } catch (e: Throwable) {
+                android.util.Log.w("MainActivity", "Window decor adjustment error: ${e.message}")
             }
-            window.statusBarColor = if (isTransparentStatusBar) {
-                AndroidColor.TRANSPARENT
-            } else if (isDarkMode) {
-                AndroidColor.parseColor("#18191A")
-            } else {
-                AndroidColor.WHITE
-            }
-            window.navigationBarColor = if (isDarkMode) AndroidColor.parseColor("#18191A") else AndroidColor.WHITE
 
             MyApplicationTheme(darkTheme = isDarkMode) {
                 MainAppContent(viewModel = viewModel)
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    private fun handleDeepLink(intent: android.content.Intent?) {
+        val data = intent?.data ?: return
+        val path = data.path ?: ""
+        val host = data.host ?: ""
+
+        val idFromQuery = data.getQueryParameter("id")
+            ?: data.getQueryParameter("post_id")
+            ?: data.getQueryParameter("reel_id")
+            ?: data.getQueryParameter("user_id")
+
+        val pathSegments = data.pathSegments ?: emptyList()
+        val idFromPath = if (pathSegments.size >= 2) pathSegments[1] else if (pathSegments.size == 1 && (host == "post" || host == "reel" || host == "profile" || host == "user")) pathSegments[0] else null
+        val targetId = idFromQuery ?: idFromPath ?: ""
+
+        if (host == "reel" || path.startsWith("/reel") || data.getQueryParameter("reel_id") != null) {
+            if (targetId.isNotBlank()) {
+                viewModel.openReel(targetId)
+            } else {
+                viewModel.navigateTo(Screen.REELS)
+            }
+        } else if (host == "post" || path.startsWith("/post") || data.getQueryParameter("post_id") != null || (host == "flikata.cyou" && path.contains("post.php"))) {
+            if (targetId.isNotBlank()) {
+                viewModel.openPost(targetId)
+            } else {
+                viewModel.navigateTo(Screen.HOME)
+            }
+        } else if (host == "profile" || host == "user" || path.startsWith("/profile") || path.startsWith("/user") || (host == "flikata.cyou" && path.contains("profile.php"))) {
+            if (targetId.isNotBlank()) {
+                viewModel.openUserProfile(targetId)
+            } else {
+                viewModel.navigateTo(Screen.PROFILE)
             }
         }
     }
@@ -90,6 +143,7 @@ fun MainAppContent(viewModel: MainViewModel) {
                 Screen.SEARCH -> viewModel.navigateTo(Screen.HOME)
                 Screen.CREATE_STORY -> viewModel.navigateTo(Screen.HOME)
                 Screen.NOTIFICATIONS -> viewModel.navigateTo(Screen.HOME)
+                Screen.FRIENDS -> viewModel.navigateTo(Screen.HOME)
                 else -> viewModel.navigateTo(Screen.HOME)
             }
         }
@@ -98,7 +152,7 @@ fun MainAppContent(viewModel: MainViewModel) {
     val showBottomBar = (currentScreen == Screen.HOME ||
             currentScreen == Screen.REELS ||
             currentScreen == Screen.CHATS ||
-            currentScreen == Screen.PROFILE) && currentScreen != Screen.SEARCH && currentScreen != Screen.CREATE_STORY && currentScreen != Screen.NOTIFICATIONS
+            currentScreen == Screen.PROFILE) && currentScreen != Screen.SEARCH && currentScreen != Screen.CREATE_STORY && currentScreen != Screen.NOTIFICATIONS && currentScreen != Screen.FRIENDS
 
     Box(
         modifier = Modifier
@@ -181,6 +235,11 @@ fun MainAppContent(viewModel: MainViewModel) {
                 Screen.MENU -> MenuScreen(
                     viewModel = viewModel,
                     onProfileClick = { viewModel.navigateTo(Screen.PROFILE) }
+                )
+
+                Screen.FRIENDS -> FriendsScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateTo(Screen.HOME) }
                 )
 
                 Screen.STORY_VIEWER -> StoryViewerScreen(

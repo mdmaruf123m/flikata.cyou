@@ -179,12 +179,14 @@ fun CreateStoryScreen(
                                 textContent = null,
                                 backgroundColor = null
                             )
+                            onClose()
                         } else if (selectedMode == 1 && storyText.trim().isNotEmpty()) {
                             viewModel.addStory(
                                 storyImage = null,
                                 textContent = storyText.trim(),
                                 backgroundColor = selectedGradientId
                             )
+                            onClose()
                         }
                     },
                     enabled = canShare,

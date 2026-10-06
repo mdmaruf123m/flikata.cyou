@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
@@ -70,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -105,6 +107,7 @@ import com.example.ui.components.FlikataAvatar
 import com.example.ui.components.FlikataVideoPlayer
 import com.example.ui.components.FloatingEmojiAnimation
 import com.example.ui.components.GraphicReactionIcon
+import com.example.ui.components.ShareBottomSheet
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.FlikataPrimary
 import com.example.ui.viewmodel.MainViewModel
@@ -119,7 +122,23 @@ fun ReelsScreen(
     // Observe reels from ViewModel so newly created video posts & reels appear here
     val reelsList by viewModel.reels.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val targetReelId by viewModel.targetReelId.collectAsState()
     var reelToDelete by remember { mutableStateOf<ReelModel?>(null) }
+    val pagerState = rememberPagerState(pageCount = { reelsList.size })
+
+    LaunchedEffect(Unit) {
+        viewModel.syncReelsFromServer()
+    }
+
+    LaunchedEffect(targetReelId, reelsList) {
+        if (!targetReelId.isNullOrBlank() && reelsList.isNotEmpty()) {
+            val clean = targetReelId!!.removePrefix("post_")
+            val index = reelsList.indexOfFirst { it.id == targetReelId || it.id == "post_$clean" || it.id == clean }
+            if (index != -1) {
+                pagerState.scrollToPage(index)
+            }
+        }
+    }
 
     val reelPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -129,9 +148,9 @@ fun ReelsScreen(
         }
     }
 
-    val pagerState = rememberPagerState(pageCount = { reelsList.size })
     var selectedReelForComments by remember { mutableStateOf<ReelModel?>(null) }
     var selectedReelForShare by remember { mutableStateOf<ReelModel?>(null) }
+    var isMutedGlobal by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -196,6 +215,18 @@ fun ReelsScreen(
                 }
             }
         } else {
+            // Record Real View in Database when Reel is Viewed
+            LaunchedEffect(pagerState.currentPage, reelsList.size) {
+                if (reelsList.isNotEmpty()) {
+                    val currentReel = reelsList.getOrNull(pagerState.currentPage)
+                    if (currentReel != null && currentReel.id.isNotBlank()) {
+                        viewModel.recordReelView(currentReel.id)
+                        val currViews = currentReel.viewsCount.replace("K", "").toIntOrNull() ?: 0
+                        currentReel.viewsCount = (currViews + 1).toString()
+                    }
+                }
+            }
+
             VerticalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize()
@@ -206,8 +237,10 @@ fun ReelsScreen(
                     reel = reel,
                     isPageSelected = pagerState.currentPage == page,
                     isOwnReel = isOwnReel,
+                    isMuted = isMutedGlobal,
                     onDeleteClick = { reelToDelete = reel },
                     onLikeToggle = {
+                        val willLike = !reel.isLiked
                         if (reel.isLiked) {
                             reel.isLiked = false
                             reel.userReaction = null
@@ -217,6 +250,8 @@ fun ReelsScreen(
                             reel.userReaction = "Like"
                             reel.likesCount += 1
                         }
+                        // Persist to MySQL database!
+                        viewModel.toggleReelLike(reel.id, if (willLike) (reel.userReaction ?: "Like") else "Like")
                     },
                     onReactionSelect = { reactionName ->
                         if (!reel.isLiked) {
@@ -224,6 +259,8 @@ fun ReelsScreen(
                         }
                         reel.isLiked = true
                         reel.userReaction = reactionName
+                        // Persist reaction to MySQL database!
+                        viewModel.setReelReaction(reel.id, reactionName)
                     },
                     onCommentClick = {
                         selectedReelForComments = reel
@@ -233,6 +270,9 @@ fun ReelsScreen(
                     },
                     onFollowToggle = {
                         reel.isFollowing = !reel.isFollowing
+                    },
+                    onUserClick = { userId, authorName ->
+                        viewModel.openUserProfile(userId, authorName)
                     }
                 )
             }
@@ -255,50 +295,48 @@ fun ReelsScreen(
                 fontWeight = FontWeight.Bold
             )
 
+            // Audio Mute/Unmute Toggle Button in place of upload icon
             IconButton(
                 onClick = {
-                    reelPickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                    )
-                }
+                    isMutedGlobal = !isMutedGlobal
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f))
             ) {
                 Icon(
-                    imageVector = Icons.Default.VideoCall,
-                    contentDescription = "Create Reel",
+                    imageVector = if (isMutedGlobal) Icons.Default.VolumeOff else Icons.Default.VolumeUp,
+                    contentDescription = if (isMutedGlobal) "Unmute Video" else "Mute Video",
                     tint = Color.White,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
         }
 
-        // Comments Bottom Sheet
+        // Comments Bottom Sheet - Persisted Real Database Comments
         if (selectedReelForComments != null) {
+            val activeReel = selectedReelForComments!!
             ReelCommentsBottomSheet(
-                reel = selectedReelForComments!!,
+                reel = activeReel,
+                currentUser = currentUser,
                 onDismiss = { selectedReelForComments = null },
                 onAddComment = { newText ->
-                    val user = viewModel.currentUser.value
-                    val authorName = user?.fullName ?: "Me"
-                    val authorAvatar = user?.profilePic ?: ""
-                    selectedReelForComments!!.comments.add(
-                        0,
-                        ReelCommentItem(
-                            id = System.currentTimeMillis().toString(),
-                            authorName = authorName,
-                            authorAvatar = authorAvatar,
-                            text = newText,
-                            timestamp = "Just now"
-                        )
-                    )
-                    selectedReelForComments!!.commentsCount += 1
+                    // Save real comment to MySQL database
+                    viewModel.addReelComment(activeReel.id, newText) { newComment ->
+                        activeReel.comments.add(0, newComment)
+                        activeReel.commentsCount += 1
+                    }
                 }
             )
         }
 
-        // Share Bottom Sheet
+        // Share Bottom Sheet with WhatsApp, Facebook, Messenger, IMO, Copy Link
         if (selectedReelForShare != null) {
-            ReelShareBottomSheet(
+            val shareSheetState = rememberModalBottomSheetState()
+            ShareBottomSheet(
                 reel = selectedReelForShare!!,
+                sheetState = shareSheetState,
                 onDismiss = { selectedReelForShare = null }
             )
         }
@@ -335,29 +373,33 @@ private fun ReelPageItem(
     reel: ReelModel,
     isPageSelected: Boolean = true,
     isOwnReel: Boolean = false,
+    isMuted: Boolean = false,
     onDeleteClick: () -> Unit = {},
     onLikeToggle: () -> Unit,
     onReactionSelect: (String) -> Unit,
     onCommentClick: () -> Unit,
     onShareClick: () -> Unit,
-    onFollowToggle: () -> Unit
+    onFollowToggle: () -> Unit,
+    onUserClick: (String, String) -> Unit = { _, _ -> }
 ) {
     val coroutineScope = rememberCoroutineScope()
-    var isMuted by remember { mutableStateOf(false) }
     var showReactionPicker by remember { mutableStateOf(false) }
     var activeFloatingReaction by remember { mutableStateOf<String?>(null) }
+    var doubleTapOffset by remember { mutableStateOf<Offset?>(null) }
 
-    // Big Center Heart Floating Animation for Double Tap
+    // Big Heart Floating Animation for Double Tap
     val heartScale = remember { Animatable(0f) }
     val heartAlpha = remember { Animatable(0f) }
 
-    val triggerDoubleTapLike = {
+    val triggerDoubleTapLike = { offset: Offset ->
+        doubleTapOffset = offset
         if (!reel.isLiked) {
             reel.isLiked = true
             reel.userReaction = "Love"
             reel.likesCount += 1
         }
         activeFloatingReaction = "Love"
+        onReactionSelect("Love")
         coroutineScope.launch {
             heartScale.snapTo(0.2f)
             heartAlpha.snapTo(1f)
@@ -378,18 +420,8 @@ private fun ReelPageItem(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = {
-                        triggerDoubleTapLike()
-                    },
-                    onTap = {
-                        isMuted = !isMuted
-                    }
-                )
-            }
     ) {
-        // Real Video Player for Reel
+        // Real Video Player for Reel (with autoPlay on scroll, single tap pause/play, double tap like, and prominent red seekbar)
         FlikataVideoPlayer(
             videoUri = reel.mediaUrl,
             modifier = Modifier.fillMaxSize(),
@@ -397,7 +429,12 @@ private fun ReelPageItem(
             repeat = true,
             isMutedDefault = isMuted,
             showControls = false,
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            showRedScrubber = true,
+            scrubberBottomPadding = 62.dp,
+            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+            onDoubleTapWithOffset = { offset ->
+                triggerDoubleTapLike(offset)
+            }
         )
 
         // Gradient Shade at Bottom
@@ -416,24 +453,31 @@ private fun ReelPageItem(
                 )
         )
 
-        // Big Animated Heart popping up on Double Tap in Center of Screen
+        // Big Animated Heart popping up on Double Tap at Tapped Location
         if (heartAlpha.value > 0f) {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val screenWidth = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp.dp
+            val screenHeight = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+
+            val xDp = with(density) {
+                (doubleTapOffset?.x ?: (screenWidth.toPx() / 2f)).toDp() - 55.dp
+            }
+            val yDp = with(density) {
+                (doubleTapOffset?.y ?: (screenHeight.toPx() / 2f)).toDp() - 55.dp
+            }
+
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(15f),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier.graphicsLayer {
+                    .offset(x = xDp, y = yDp)
+                    .graphicsLayer {
                         scaleX = heartScale.value
                         scaleY = heartScale.value
                         alpha = heartAlpha.value
-                    },
-                    contentAlignment = Alignment.Center
-                ) {
-                    GraphicReactionIcon(type = "Love", size = 110.dp)
-                }
+                    }
+                    .zIndex(20f),
+                contentAlignment = Alignment.Center
+            ) {
+                GraphicReactionIcon(type = "Love", size = 110.dp)
             }
         }
 
@@ -497,23 +541,28 @@ private fun ReelPageItem(
                 Row(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FlikataAvatar(
-                        name = reel.authorName,
-                        avatarUrl = reel.authorAvatar,
-                        size = 40.dp,
-                        borderWidth = 1.5.dp,
-                        borderColor = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = reel.authorName,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
-                    )
-                    if (reel.isVerified) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        VerifiedBadge(size = 14.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { onUserClick(reel.userId, reel.authorName) }
+                    ) {
+                        FlikataAvatar(
+                            name = reel.authorName,
+                            avatarUrl = reel.authorAvatar,
+                            size = 40.dp,
+                            borderWidth = 1.5.dp,
+                            borderColor = Color.White
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = reel.authorName,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        if (reel.isVerified) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerifiedBadge(size = 14.dp)
+                        }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     // Follow / Following pill button
@@ -634,23 +683,6 @@ private fun ReelPageItem(
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
-                    }
-
-                    // Facebook Reaction Picker Floating Popup on Long Press
-                    if (showReactionPicker) {
-                        Box(
-                            modifier = Modifier
-                                .zIndex(20f)
-                                .padding(end = 50.dp)
-                        ) {
-                            FacebookReactionPicker(
-                                onReactionSelected = { reaction ->
-                                    onReactionSelect(reaction)
-                                    activeFloatingReaction = reaction
-                                    showReactionPicker = false
-                                }
-                            )
-                        }
                     }
                 }
 
@@ -777,6 +809,35 @@ private fun ReelPageItem(
                 SpinningVinylDisc(authorAvatar = reel.authorAvatar)
             }
         }
+
+        // Facebook Reaction Picker Floating Popup (Positioned gracefully to the left of Like button, outside action column)
+        if (showReactionPicker) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        showReactionPicker = false
+                    }
+                    .zIndex(60f)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 280.dp, end = 68.dp)
+                ) {
+                    FacebookReactionPicker(
+                        onReactionSelected = { reaction ->
+                            onReactionSelect(reaction)
+                            activeFloatingReaction = reaction
+                            showReactionPicker = false
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -814,11 +875,15 @@ private fun SpinningVinylDisc(authorAvatar: String) {
 @Composable
 private fun ReelCommentsBottomSheet(
     reel: ReelModel,
+    currentUser: com.example.data.model.User?,
     onDismiss: () -> Unit,
     onAddComment: (String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var commentInput by remember { mutableStateOf("") }
+    val commentsList = remember(reel.id, reel.comments.size) {
+        mutableStateListOf<ReelCommentItem>().apply { addAll(reel.comments) }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -871,7 +936,7 @@ private fun ReelCommentsBottomSheet(
             Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f), thickness = 0.5.dp)
 
             // Comments List
-            if (reel.comments.isEmpty()) {
+            if (commentsList.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -892,7 +957,7 @@ private fun ReelCommentsBottomSheet(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    items(reel.comments, key = { it.id }) { comment ->
+                    items(commentsList, key = { it.id }) { comment ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.Top
@@ -1024,7 +1089,7 @@ private fun ReelCommentsBottomSheet(
                             decorationBox = { innerTextField ->
                                 if (commentInput.isEmpty()) {
                                     Text(
-                                        text = "মন্তব্য করুন...",
+                                        text = "Write a comment...",
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                         fontSize = 14.sp
                                     )
@@ -1044,8 +1109,21 @@ private fun ReelCommentsBottomSheet(
                             .background(FlikataPrimary)
                             .clickable {
                                 if (commentInput.trim().isNotEmpty()) {
-                                    onAddComment(commentInput.trim())
+                                    val text = commentInput.trim()
                                     commentInput = ""
+                                    val authorName = currentUser?.fullName ?: "Me"
+                                    val authorAvatar = currentUser?.profilePic ?: ""
+                                    val isVerified = currentUser?.isVerified ?: false
+                                    val localComment = ReelCommentItem(
+                                        id = System.currentTimeMillis().toString(),
+                                        authorName = authorName,
+                                        authorAvatar = authorAvatar,
+                                        text = text,
+                                        timestamp = "Just now",
+                                        isVerified = isVerified
+                                    )
+                                    commentsList.add(0, localComment)
+                                    onAddComment(text)
                                 }
                             },
                         contentAlignment = Alignment.Center
@@ -1069,6 +1147,7 @@ private fun ReelShareBottomSheet(
     reel: ReelModel,
     onDismiss: () -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val sheetState = rememberModalBottomSheetState()
 
     ModalBottomSheet(
@@ -1120,6 +1199,12 @@ private fun ReelShareBottomSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
+                        val cleanId = reel.id.removePrefix("post_")
+                        val shareUrl = "https://flikata.cyou/backend/post.php?reel_id=$cleanId"
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Flikata Reel Link", shareUrl)
+                        clipboard.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, "Link copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
                         onDismiss()
                     }
                     .padding(vertical = 12.dp),

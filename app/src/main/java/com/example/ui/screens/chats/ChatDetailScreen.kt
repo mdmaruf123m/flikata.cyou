@@ -166,19 +166,19 @@ fun ChatDetailScreen(
         mutableStateListOf(
             DetailMessage(
                 id = "m1",
-                text = "আসসালামু আলাইকুম! কেমন আছেন?",
+                text = "Hello! How are you doing today?",
                 isMe = false,
                 time = "10:15 AM"
             ),
             DetailMessage(
                 id = "m2",
-                text = "ওয়ালাইকুম আসসালাম! আলহামদুলিল্লাহ ভালো। আপনার খবর কী?",
+                text = "Hi! I am doing well, thank you! How about you?",
                 isMe = true,
                 time = "10:16 AM"
             ),
             DetailMessage(
                 id = "m3",
-                text = "Flikata অ্যাপের নতুন ফিচারগুলো খুব সুন্দর হয়েছে!",
+                text = "The new features on Flikata look fantastic!",
                 isMe = false,
                 time = "10:18 AM"
             )
