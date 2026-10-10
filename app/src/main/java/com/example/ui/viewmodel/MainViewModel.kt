@@ -14,6 +14,7 @@ import com.example.data.model.ReelModel
 import com.example.data.model.Story
 import com.example.data.model.User
 import com.example.data.repository.FlikataRepository
+import androidx.compose.foundation.lazy.LazyListState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,6 +28,7 @@ enum class Screen {
     SPLASH,
     LOGIN,
     REGISTER,
+    FORGOT_PASSWORD,
     HOME,
     REELS,
     CREATE_POST,
@@ -52,6 +54,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val highlightedPostId = MutableStateFlow<String?>(null)
     val selectedUserProfileId = MutableStateFlow<String?>(null)
     val selectedUserProfileName = MutableStateFlow<String?>(null)
+    val selectedUserProfileData = MutableStateFlow<com.example.data.model.UserProfileData?>(null)
     val targetReelId = MutableStateFlow<String?>(null)
 
     fun openPost(postId: String) {
@@ -65,13 +68,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openUserProfile(userId: String, userName: String = "") {
         val myId = currentUser.value?.id ?: ""
-        if (userId.isNotBlank() && userId == myId) {
+        val clean = userId.removePrefix("user_").removePrefix("partner_").trim()
+        if (clean.isNotBlank() && clean == myId) {
             selectedUserProfileId.value = null
             selectedUserProfileName.value = null
+            selectedUserProfileData.value = null
             _currentScreen.value = Screen.PROFILE
         } else {
-            selectedUserProfileId.value = userId.ifBlank { null }
+            selectedUserProfileId.value = clean.ifBlank { null }
             selectedUserProfileName.value = userName.ifBlank { null }
+            selectedUserProfileData.value = null
+            if (clean.isNotBlank()) {
+                viewModelScope.launch {
+                    val res = repository.fetchUserProfile(clean)
+                    if (res.isSuccess) {
+                        val profile = res.getOrNull()
+                        selectedUserProfileData.value = profile
+                        if (!profile?.fullName.isNullOrBlank()) {
+                            selectedUserProfileName.value = profile!!.fullName
+                        }
+                    }
+                }
+            }
             _currentScreen.value = Screen.PROFILE
         }
     }
@@ -79,12 +97,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun clearSelectedUserProfile() {
         selectedUserProfileId.value = null
         selectedUserProfileName.value = null
+        selectedUserProfileData.value = null
     }
 
     fun openReel(reelId: String) {
         targetReelId.value = reelId
         _currentScreen.value = Screen.REELS
     }
+
+    val homeListState = LazyListState()
 
     init {
         viewModelScope.launch {
@@ -109,6 +130,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (videoReels.isNotEmpty()) {
                     val curr = _reels.value
                     _reels.value = (curr + videoReels).distinctBy { it.mediaUrl }
+                }
+            }
+        }
+
+        // Auto-sync chats continuously so incoming messages from other phones show up in real-time
+        viewModelScope.launch {
+            while (true) {
+                delay(3000)
+                val uid = currentUser.value?.id
+                if (!uid.isNullOrBlank()) {
+                    repository.syncChatsFromServer(uid)
                 }
             }
         }
@@ -263,6 +295,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // Auth Form States
     val loginEmailOrPhone = MutableStateFlow("")
     val loginPassword = MutableStateFlow("")
+    val forgotPasswordEmailOrPhone = MutableStateFlow("")
+    val forgotPasswordSubmitted = MutableStateFlow(false)
     val authError = MutableStateFlow<String?>(null)
     val authLoading = MutableStateFlow(false)
 
@@ -467,6 +501,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun getReelComments(reelId: String, onLoaded: (List<ReelCommentItem>) -> Unit) {
+        viewModelScope.launch {
+            val result = repository.getReelComments(reelId)
+            if (result.isSuccess && result.getOrNull() != null) {
+                val list = result.getOrNull()!!.map { c ->
+                    ReelCommentItem(
+                        id = c.id,
+                        authorName = c.authorName,
+                        authorAvatar = c.authorAvatar,
+                        text = c.text,
+                        timestamp = c.timestamp,
+                        isLiked = c.isLiked,
+                        isVerified = c.isVerified
+                    )
+                }
+                onLoaded(list)
+            }
+        }
+    }
+
     // Post Upload Pipe State
     private val _postUploadState = MutableStateFlow(PostUploadState())
     val postUploadState: StateFlow<PostUploadState> = _postUploadState.asStateFlow()
@@ -523,6 +577,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
+            repository.getLoggedInUserDirect()
             repository.seedInitialDataIfEmpty()
             repository.syncPostsFromServer()
             syncStories()
@@ -531,6 +586,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(screen: Screen) {
+        if (screen == Screen.PROFILE) {
+            clearSelectedUserProfile()
+        }
         _currentScreen.value = screen
     }
 
@@ -539,27 +597,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _currentScreen.value = Screen.CHAT_DETAIL
     }
 
-    fun openChatWithUser(name: String, avatar: String, isVerified: Boolean = false) {
-        val existing = chats.value.find { it.senderName.equals(name, ignoreCase = true) }
+    fun openChatWithUser(name: String, avatar: String, isVerified: Boolean = false, userId: String? = null) {
+        val cleanId = userId?.removePrefix("user_")?.removePrefix("partner_")?.trim()
+        val resolvedId = if (!cleanId.isNullOrBlank() && cleanId.toIntOrNull() != null) {
+            cleanId
+        } else {
+            val fromChat = chats.value.find { it.senderName.equals(name, ignoreCase = true) }?.senderId
+            val fromPost = posts.value.find { it.authorName.equals(name, ignoreCase = true) }?.userId
+            fromChat ?: fromPost ?: cleanId?.ifBlank { null } ?: "1"
+        }
+
+        val existing = chats.value.find {
+            it.senderId == resolvedId || (resolvedId != "1" && it.id == resolvedId) || it.senderName.equals(name, ignoreCase = true)
+        }
+
         if (existing != null) {
-            _selectedChat.value = existing
+            val updated = existing.copy(
+                id = resolvedId,
+                senderIdRaw = resolvedId,
+                senderNameRaw = name.ifBlank { existing.senderName },
+                senderAvatarRaw = if (avatar.isNotBlank()) avatar else existing.senderAvatar,
+                isVerifiedRaw = isVerified || existing.isVerified
+            )
+            _selectedChat.value = updated
         } else {
             val newChat = ChatMessage(
-                id = "chat_${System.currentTimeMillis()}",
-                threadId = "t_${System.currentTimeMillis()}",
-                senderId = "u_${name.hashCode()}",
-                senderName = name,
-                senderAvatar = avatar,
-                isVerified = isVerified,
+                id = resolvedId,
+                threadIdRaw = resolvedId,
+                senderIdRaw = resolvedId,
+                senderNameRaw = name,
+                senderAvatarRaw = avatar,
+                isVerifiedRaw = isVerified,
                 message = "Active now",
                 timestamp = "Just now",
                 isVoiceMessage = false,
                 isMissedCall = false,
-                unreadCount = 0
+                unreadCountRaw = 0
             )
             _selectedChat.value = newChat
         }
         _currentScreen.value = Screen.CHAT_DETAIL
+    }
+
+
+    fun sendMessage(partnerId: String, partnerName: String, partnerAvatar: String, messageText: String) {
+        viewModelScope.launch {
+            repository.sendChatMessage(partnerId, partnerName, partnerAvatar, messageText)
+        }
     }
 
     fun openImageViewer(imageUrl: String) {
@@ -683,6 +767,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 authError.value = result.exceptionOrNull()?.message ?: "Invalid email/phone or password"
             }
         }
+    }
+
+    fun performForgotPassword() {
+        val identifier = forgotPasswordEmailOrPhone.value.trim()
+        if (identifier.isEmpty()) {
+            authError.value = "Please enter your phone number or email"
+            return
+        }
+
+        viewModelScope.launch {
+            authLoading.value = true
+            authError.value = null
+            // Simulate network request for password recovery link/token
+            kotlinx.coroutines.delay(1200)
+            authLoading.value = false
+            forgotPasswordSubmitted.value = true
+        }
+    }
+
+    fun resetForgotPasswordState() {
+        forgotPasswordEmailOrPhone.value = ""
+        forgotPasswordSubmitted.value = false
+        authError.value = null
+        authLoading.value = false
     }
 
     fun performRegister() {

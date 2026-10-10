@@ -7,8 +7,18 @@
 require_once __DIR__ . '/../config/db.php';
 $pdo = getDB();
 
-$postId = (int)($_GET['post_id'] ?? 0);
-$reelId = (int)($_GET['reel_id'] ?? 0);
+$rawPostId = $_GET['post_id'] ?? null;
+$rawReelId = $_GET['reel_id'] ?? null;
+
+if (!empty($rawReelId) && str_starts_with((string)$rawReelId, 'post_')) {
+    $rawPostId = substr((string)$rawReelId, 5);
+    $rawReelId = null;
+} elseif (!empty($rawPostId) && str_starts_with((string)$rawPostId, 'post_')) {
+    $rawPostId = substr((string)$rawPostId, 5);
+}
+
+$postId = !empty($rawPostId) ? (int)$rawPostId : 0;
+$reelId = !empty($rawReelId) ? (int)$rawReelId : 0;
 
 if (!$postId && !$reelId) {
     jsonResponse(false, null, 'post_id or reel_id is required.');
@@ -19,19 +29,19 @@ if ($postId) {
         SELECT c.*, u.full_name AS author_name, u.profile_pic AS author_avatar, u.is_verified
         FROM comments c
         JOIN users u ON c.user_id = u.id
-        WHERE c.post_id = ?
+        WHERE c.post_id = ? OR c.reel_id = ?
         ORDER BY c.id ASC
     ");
-    $stmt->execute([$postId]);
+    $stmt->execute([$postId, $postId]);
 } else {
     $stmt = $pdo->prepare("
         SELECT c.*, u.full_name AS author_name, u.profile_pic AS author_avatar, u.is_verified
         FROM comments c
         JOIN users u ON c.user_id = u.id
-        WHERE c.reel_id = ?
+        WHERE c.reel_id = ? OR c.post_id = ?
         ORDER BY c.id ASC
     ");
-    $stmt->execute([$reelId]);
+    $stmt->execute([$reelId, $reelId]);
 }
 
 $comments = $stmt->fetchAll();

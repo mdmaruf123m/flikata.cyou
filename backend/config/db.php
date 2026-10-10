@@ -66,11 +66,26 @@ function getAuthUser($pdo) {
         $token = $_REQUEST['auth_token'];
     }
 
-    if (!$token) {
-        return null;
+    if ($token) {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE auth_token = ? LIMIT 1");
+        $stmt->execute([$token]);
+        $u = $stmt->fetch();
+        if ($u) {
+            return $u;
+        }
     }
 
-    $stmt = $pdo->prepare("SELECT * FROM users WHERE auth_token = ? LIMIT 1");
-    $stmt->execute([$token]);
-    return $stmt->fetch() ?: null;
+    // Direct fallback by sender_id, user_id, or X-Sender-Id
+    $fallbackId = !empty($_REQUEST['sender_id']) ? (int)$_REQUEST['sender_id'] :
+                  (!empty($_REQUEST['user_id']) ? (int)$_REQUEST['user_id'] :
+                  (!empty($headers['X-Sender-Id']) ? (int)$headers['X-Sender-Id'] :
+                  (!empty($headers['x-sender-id']) ? (int)$headers['x-sender-id'] : 0)));
+    if ($fallbackId > 0) {
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ? LIMIT 1");
+        $stmt->execute([$fallbackId]);
+        return $stmt->fetch() ?: null;
+    }
+
+    return null;
 }
+

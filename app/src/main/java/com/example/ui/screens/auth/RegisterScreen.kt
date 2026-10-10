@@ -1,8 +1,10 @@
 package com.example.ui.screens.auth
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,25 +21,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.PersonOutline
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,26 +44,30 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.FlikataBackground
+import com.example.ui.components.SoftNeumorphicBackground
+import com.example.ui.components.SoftNeumorphicCard
+import com.example.ui.components.SoftNeumorphicTextField
+import com.example.ui.components.SoftPrimaryBlueButton
+import com.example.ui.components.SoftUITheme
 import com.example.ui.theme.FlikataError
 import com.example.ui.theme.FlikataPrimary
-import com.example.ui.theme.FlikataSurface
-import com.example.ui.theme.FlikataTextPrimary
-import com.example.ui.theme.FlikataTextSecondary
 import com.example.ui.viewmodel.MainViewModel
+import java.util.Calendar
 
 @Composable
 fun RegisterScreen(
     viewModel: MainViewModel,
     onNavigateBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val firstName by viewModel.regFirstName.collectAsState()
     val lastName by viewModel.regLastName.collectAsState()
     val accountType by viewModel.regAccountType.collectAsState() // "phone" or "email"
@@ -74,180 +75,231 @@ fun RegisterScreen(
     val gender by viewModel.regGender.collectAsState()
     val password by viewModel.regPassword.collectAsState()
     val confirmPassword by viewModel.regConfirmPassword.collectAsState()
+    val dobString by viewModel.regDob.collectAsState()
     val authError by viewModel.authError.collectAsState()
     val isLoading by viewModel.authLoading.collectAsState()
 
-    var isPasswordVisible by remember { mutableStateOf(false) }
-    var isConfirmPasswordVisible by remember { mutableStateOf(false) }
-    val dobString by viewModel.regDob.collectAsState()
-
+    var showServerConfigDialog by remember { mutableStateOf(false) }
+    var currentServerUrl by remember { mutableStateOf(com.example.data.remote.ApiClient.baseUrl) }
     val scrollState = rememberScrollState()
 
-    Scaffold(
-        topBar = {
-            Surface(color = FlikataSurface, tonalElevation = 1.dp) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
-                        }
-                        Text(
-                            text = "Create Account",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = FlikataTextPrimary
-                        )
-                    }
+    // DatePicker setup
+    val calendar = Calendar.getInstance()
+    val datePickerDialog = remember {
+        DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val formattedMonth = String.format("%02d", month + 1)
+                val formattedDay = String.format("%02d", dayOfMonth)
+                viewModel.regDob.value = "$year-$formattedMonth-$formattedDay"
+            },
+            calendar.get(Calendar.YEAR) - 20,
+            calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)
+        )
+    }
 
-                    IconButton(onClick = { }) {
+    SoftNeumorphicBackground(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(scrollState),
+            horizontalAlignment = Alignment.Start
+        ) {
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Header Bar: "Create Account" on left, Server/Menu Icon on right matching Screenshot 2
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Create Account",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color(0xFF0B132A),
+                    letterSpacing = (-0.5).sp
+                )
+
+                // Top right soft square action button (Server / Config button)
+                SoftNeumorphicCard(
+                    modifier = Modifier.size(46.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = 5.dp,
+                    backgroundColor = Color(0xFFF1F6FD),
+                    onClick = { showServerConfigDialog = true }
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Dns,
-                            contentDescription = "Server URL",
-                            tint = FlikataPrimary,
-                            modifier = Modifier.size(22.dp)
+                            imageVector = Icons.Default.Storage,
+                            contentDescription = "Server Setting",
+                            tint = Color(0xFF0070F3),
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
             }
-        },
-        containerColor = FlikataBackground
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
-                .verticalScroll(scrollState),
-            horizontalAlignment = Alignment.Start
-        ) {
-            // 1. First Name & Last Name Side-by-Side
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // 1. First Name & Last Name (Side by side pills)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                OutlinedTextField(
+                // First Name
+                SoftNeumorphicTextField(
                     value = firstName,
                     onValueChange = { viewModel.regFirstName.value = it },
-                    placeholder = { Text("First name", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        focusedBorderColor = FlikataPrimary,
-                        unfocusedBorderColor = Color.Transparent
-                    ),
-                    shape = RoundedCornerShape(12.dp),
+                    placeholder = "First name",
+                    leadingIcon = Icons.Default.PersonOutline,
                     modifier = Modifier
                         .weight(1f)
                         .testTag("reg_first_name")
                 )
 
-                OutlinedTextField(
+                // Last Name
+                SoftNeumorphicTextField(
                     value = lastName,
                     onValueChange = { viewModel.regLastName.value = it },
-                    placeholder = { Text("Last name", color = Color.Gray) },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        focusedBorderColor = FlikataPrimary,
-                        unfocusedBorderColor = Color.Transparent
-                    ),
-                    shape = RoundedCornerShape(12.dp),
+                    placeholder = "Last name",
+                    leadingIcon = Icons.Default.PersonOutline,
                     modifier = Modifier
                         .weight(1f)
                         .testTag("reg_last_name")
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // 2. Section: Contact Method
             Text(
                 text = "Contact Method",
-                fontSize = 14.sp,
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = FlikataTextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                color = Color(0xFF0B132A)
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Mobile Number Option
+                // Mobile Number Choice Pill
                 val isPhoneSelected = accountType == "phone"
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isPhoneSelected) FlikataPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
-                        .border(
-                            width = 1.5.dp,
-                            color = if (isPhoneSelected) FlikataPrimary else Color.Transparent,
-                            shape = RoundedCornerShape(12.dp)
+                        .height(52.dp)
+                        .shadow(
+                            elevation = if (isPhoneSelected) 6.dp else 3.dp,
+                            shape = RoundedCornerShape(26.dp),
+                            ambientColor = if (isPhoneSelected) Color(0x660070F3) else SoftUITheme.ShadowDark,
+                            spotColor = if (isPhoneSelected) Color(0x660070F3) else SoftUITheme.ShadowDark
                         )
-                        .clickable { viewModel.regAccountType.value = "phone" },
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(
+                            if (isPhoneSelected) {
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFFE3F0FF), Color(0xFFD3E7FF))
+                                )
+                            } else {
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFFF1F6FD), Color(0xFFE8F1FC))
+                                )
+                            }
+                        )
+                        .border(
+                            width = if (isPhoneSelected) 1.8.dp else 1.dp,
+                            color = if (isPhoneSelected) Color(0xFF0075FF) else Color(0x66FFFFFF),
+                            shape = RoundedCornerShape(26.dp)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { viewModel.regAccountType.value = "phone" },
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Phone,
                             contentDescription = null,
-                            tint = if (isPhoneSelected) FlikataPrimary else Color.Gray,
+                            tint = if (isPhoneSelected) Color(0xFF0075FF) else Color(0xFF64748B),
                             modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Mobile Number",
-                            fontSize = 13.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = if (isPhoneSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isPhoneSelected) FlikataPrimary else FlikataTextPrimary
+                            color = if (isPhoneSelected) Color(0xFF0075FF) else Color(0xFF64748B)
                         )
                     }
                 }
 
-                // Email Address Option
+                // Email Address Choice Pill
                 val isEmailSelected = accountType == "email"
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isEmailSelected) FlikataPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
-                        .border(
-                            width = 1.5.dp,
-                            color = if (isEmailSelected) FlikataPrimary else Color.Transparent,
-                            shape = RoundedCornerShape(12.dp)
+                        .height(52.dp)
+                        .shadow(
+                            elevation = if (isEmailSelected) 6.dp else 3.dp,
+                            shape = RoundedCornerShape(26.dp),
+                            ambientColor = if (isEmailSelected) Color(0x660070F3) else SoftUITheme.ShadowDark,
+                            spotColor = if (isEmailSelected) Color(0x660070F3) else SoftUITheme.ShadowDark
                         )
-                        .clickable { viewModel.regAccountType.value = "email" },
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(
+                            if (isEmailSelected) {
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFFE3F0FF), Color(0xFFD3E7FF))
+                                )
+                            } else {
+                                Brush.horizontalGradient(
+                                    listOf(Color(0xFFF1F6FD), Color(0xFFE8F1FC))
+                                )
+                            }
+                        )
+                        .border(
+                            width = if (isEmailSelected) 1.8.dp else 1.dp,
+                            color = if (isEmailSelected) Color(0xFF0075FF) else Color(0x66FFFFFF),
+                            shape = RoundedCornerShape(26.dp)
+                        )
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { viewModel.regAccountType.value = "email" },
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Email,
                             contentDescription = null,
-                            tint = if (isEmailSelected) FlikataPrimary else Color.Gray,
+                            tint = if (isEmailSelected) Color(0xFF0075FF) else Color(0xFF64748B),
                             modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = "Email Address",
-                            fontSize = 13.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = if (isEmailSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isEmailSelected) FlikataPrimary else FlikataTextPrimary
+                            color = if (isEmailSelected) Color(0xFF0075FF) else Color(0xFF64748B)
                         )
                     }
                 }
@@ -255,116 +307,117 @@ fun RegisterScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 3. Dynamic Contact Input Field
-            OutlinedTextField(
+            // 3. Dynamic Contact Input Pill Field
+            SoftNeumorphicTextField(
                 value = identifier,
                 onValueChange = { viewModel.regIdentifier.value = it },
-                placeholder = {
-                    Text(
-                        text = if (accountType == "phone") "Mobile number" else "Email address",
-                        color = Color.Gray
-                    )
-                },
-                singleLine = true,
-                leadingIcon = {
-                    Icon(
-                        imageVector = if (accountType == "phone") Icons.Default.Phone else Icons.Default.Email,
-                        contentDescription = "Contact Icon",
-                        tint = FlikataPrimary
-                    )
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    focusedBorderColor = FlikataPrimary,
-                    unfocusedBorderColor = Color.Transparent
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("reg_identifier")
+                placeholder = if (accountType == "phone") "Mobile number" else "Email address",
+                leadingIcon = if (accountType == "phone") Icons.Default.Phone else Icons.Default.Email,
+                modifier = Modifier.testTag("reg_identifier")
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // 4. Section: Gender
             Text(
                 text = "Gender",
-                fontSize = 14.sp,
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = FlikataTextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                color = Color(0xFF0B132A)
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 listOf("Male", "Female", "Other").forEach { item ->
                     val isSelected = gender == item
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) FlikataPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant)
-                            .border(
-                                width = 1.5.dp,
-                                color = if (isSelected) FlikataPrimary else Color.Transparent,
-                                shape = RoundedCornerShape(12.dp)
+                            .height(48.dp)
+                            .shadow(
+                                elevation = if (isSelected) 6.dp else 3.dp,
+                                shape = RoundedCornerShape(24.dp),
+                                ambientColor = if (isSelected) Color(0x660070F3) else SoftUITheme.ShadowDark,
+                                spotColor = if (isSelected) Color(0x660070F3) else SoftUITheme.ShadowDark
                             )
-                            .clickable { viewModel.regGender.value = item },
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(
+                                if (isSelected) {
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFFE3F0FF), Color(0xFFD3E7FF))
+                                    )
+                                } else {
+                                    Brush.horizontalGradient(
+                                        listOf(Color(0xFFF1F6FD), Color(0xFFE8F1FC))
+                                    )
+                                }
+                            )
+                            .border(
+                                width = if (isSelected) 1.8.dp else 1.dp,
+                                color = if (isSelected) Color(0xFF0075FF) else Color(0x66FFFFFF),
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.regGender.value = item },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = item,
                             fontSize = 14.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) FlikataPrimary else FlikataTextPrimary
+                            color = if (isSelected) Color(0xFF0075FF) else Color(0xFF64748B)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             // 5. Section: Date of Birth
             Text(
                 text = "Date of Birth",
-                fontSize = 14.sp,
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.Bold,
-                color = FlikataTextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
+                color = Color(0xFF0B132A)
             )
 
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(12.dp),
+            Spacer(modifier = Modifier.height(10.dp))
+
+            SoftNeumorphicCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { }
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                elevation = 4.dp,
+                backgroundColor = Color(0xFFF1F6FD),
+                onClick = { datePickerDialog.show() }
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 14.dp),
+                        .fillMaxSize()
+                        .padding(horizontal = 18.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.CalendarMonth,
-                            contentDescription = "Date of birth",
-                            tint = FlikataPrimary,
+                            contentDescription = "Calendar",
+                            tint = Color(0xFF0075FF),
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
-                            text = dobString,
+                            text = if (dobString.isNotEmpty()) dobString else "2000-01-01",
                             fontSize = 15.sp,
-                            color = FlikataTextPrimary
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF1E293B)
                         )
                     }
 
@@ -372,126 +425,58 @@ fun RegisterScreen(
                         text = "Change",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = FlikataPrimary
+                        color = Color(0xFF0070F3)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 6. Password Input Field
-            OutlinedTextField(
+            // 6. Password Field
+            SoftNeumorphicTextField(
                 value = password,
                 onValueChange = { viewModel.regPassword.value = it },
-                placeholder = { Text("Password", color = Color.Gray) },
-                singleLine = true,
-                visualTransformation = if (isPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Password Icon",
-                        tint = Color.Gray
-                    )
-                },
-                trailingIcon = {
-                    IconButton(onClick = { isPasswordVisible = !isPasswordVisible }) {
-                        Icon(
-                            imageVector = if (isPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Toggle Password",
-                            tint = Color.Gray
-                        )
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    focusedBorderColor = FlikataPrimary,
-                    unfocusedBorderColor = Color.Transparent
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("reg_password")
+                placeholder = "Password",
+                leadingIcon = Icons.Default.Lock,
+                isPassword = true,
+                modifier = Modifier.testTag("reg_password")
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // 7. Confirm Password Input Field
-            OutlinedTextField(
+            // 7. Confirm Password Field
+            SoftNeumorphicTextField(
                 value = confirmPassword,
                 onValueChange = { viewModel.regConfirmPassword.value = it },
-                placeholder = { Text("Confirm Password", color = Color.Gray) },
-                singleLine = true,
-                visualTransformation = if (isConfirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Confirm Password Icon",
-                        tint = Color.Gray
-                    )
-                },
-                trailingIcon = {
-                    IconButton(onClick = { isConfirmPasswordVisible = !isConfirmPasswordVisible }) {
-                        Icon(
-                            imageVector = if (isConfirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = "Toggle Confirm Password",
-                            tint = Color.Gray
-                        )
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                    focusedBorderColor = FlikataPrimary,
-                    unfocusedBorderColor = Color.Transparent
-                ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("reg_confirm_password")
+                placeholder = "Confirm Password",
+                leadingIcon = Icons.Default.Lock,
+                isPassword = true,
+                modifier = Modifier.testTag("reg_confirm_password")
             )
 
             if (authError != null) {
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = authError!!,
                     color = FlikataError,
-                    fontSize = 13.sp
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Full Width Blue Button: "Sign Up"
-            Button(
+            // 8. Primary Blue Button: "Sign Up"
+            SoftPrimaryBlueButton(
+                text = "Sign Up",
                 onClick = { viewModel.performRegister() },
-                enabled = !isLoading,
-                colors = ButtonDefaults.buttonColors(containerColor = FlikataPrimary),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
-                    .testTag("reg_submit_btn")
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
-                } else {
-                    Text(
-                        text = "Sign Up",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                }
-            }
+                isLoading = isLoading,
+                modifier = Modifier.testTag("reg_submit_btn")
+            )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // Footer: "Already have an account? Sign In"
+            // 9. Footer: "Already have an account? Sign In"
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
@@ -500,20 +485,59 @@ fun RegisterScreen(
                 Text(
                     text = "Already have an account? ",
                     fontSize = 14.sp,
-                    color = FlikataTextSecondary
+                    color = Color(0xFF64748B)
                 )
                 Text(
                     text = "Sign In",
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = FlikataPrimary,
+                    color = Color(0xFF0070F3),
                     modifier = Modifier
                         .clickable { onNavigateBack() }
                         .testTag("reg_goto_login_btn")
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(36.dp))
+        }
+
+        // Server URL Configuration Dialog
+        if (showServerConfigDialog) {
+            AlertDialog(
+                onDismissRequest = { showServerConfigDialog = false },
+                title = { Text("Server URL Settings") },
+                text = {
+                    Column {
+                        Text(
+                            text = "Configure Live PHP / MySQL backend endpoint:",
+                            fontSize = 13.sp,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = currentServerUrl,
+                            onValueChange = { currentServerUrl = it },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            com.example.data.remote.ApiClient.baseUrl = currentServerUrl
+                            showServerConfigDialog = false
+                        }
+                    ) {
+                        Text("Save", fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showServerConfigDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }

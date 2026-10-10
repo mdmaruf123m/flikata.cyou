@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import com.example.ui.components.FlikataBottomNav
+import com.example.ui.screens.auth.ForgotPasswordScreen
 import com.example.ui.screens.auth.LoginScreen
 import com.example.ui.screens.auth.RegisterScreen
 import com.example.ui.screens.chats.ChatDetailScreen
@@ -138,6 +140,7 @@ fun MainAppContent(viewModel: MainViewModel) {
         BackHandler {
             when (currentScreen) {
                 Screen.REGISTER -> viewModel.navigateTo(Screen.LOGIN)
+                Screen.FORGOT_PASSWORD -> viewModel.navigateTo(Screen.LOGIN)
                 Screen.CHAT_DETAIL -> viewModel.navigateTo(Screen.CHATS)
                 Screen.EDIT_PROFILE -> viewModel.navigateTo(Screen.PROFILE)
                 Screen.SEARCH -> viewModel.navigateTo(Screen.HOME)
@@ -170,7 +173,13 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.LOGIN -> LoginScreen(
                     viewModel = viewModel,
-                    onNavigateToRegister = { viewModel.navigateTo(Screen.REGISTER) }
+                    onNavigateToRegister = { viewModel.navigateTo(Screen.REGISTER) },
+                    onNavigateToForgotPassword = { viewModel.navigateTo(Screen.FORGOT_PASSWORD) }
+                )
+
+                Screen.FORGOT_PASSWORD -> ForgotPasswordScreen(
+                    viewModel = viewModel,
+                    onNavigateBack = { viewModel.navigateTo(Screen.LOGIN) }
                 )
 
                 Screen.REGISTER -> RegisterScreen(
@@ -257,10 +266,15 @@ fun MainAppContent(viewModel: MainViewModel) {
 
         // Floating Bottom Navigation Bar
         if (showBottomBar) {
+            val currentUser by viewModel.currentUser.collectAsState()
+            val chats by viewModel.chats.collectAsState()
+            val unreadCount = remember(chats) { chats.sumOf { it.unreadCount } }
             FlikataBottomNav(
                 currentScreen = currentScreen,
                 onNavigate = { viewModel.navigateTo(it) },
                 onCreatePostClick = { viewModel.navigateTo(Screen.CREATE_POST) },
+                userAvatarUrl = currentUser?.profilePic,
+                unreadChatsCount = unreadCount,
                 modifier = Modifier.align(Alignment.BottomCenter)
             )
         }

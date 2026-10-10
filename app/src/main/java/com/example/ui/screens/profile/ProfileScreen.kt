@@ -80,6 +80,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -92,6 +93,7 @@ import com.example.R
 import com.example.ui.components.FlikataAvatar
 import com.example.ui.components.PostCard
 import com.example.ui.components.ProfileSettingsBottomSheet
+import com.example.ui.components.SoftUITheme
 import com.example.ui.theme.FlikataBackground
 import com.example.ui.theme.FlikataPrimary
 import com.example.ui.theme.FlikataSoftBlue
@@ -118,8 +120,10 @@ fun ProfileScreen(
 
     val isOwnProfile = selectedUserProfileId == null || selectedUserProfileId == currentUser?.id
 
-    BackHandler(!isOwnProfile) {
-        viewModel.clearSelectedUserProfile()
+    BackHandler {
+        if (!isOwnProfile) {
+            viewModel.clearSelectedUserProfile()
+        }
         onBack()
     }
 
@@ -166,9 +170,16 @@ fun ProfileScreen(
         }
     }
 
-    val displayUserName = if (isOwnProfile) (currentUser?.fullName ?: "User") else (selectedUserProfileName ?: userPosts.firstOrNull()?.authorName ?: "Flikata User")
-    val displayUserAvatar = if (isOwnProfile) (currentUser?.profilePic ?: "") else (userPosts.firstOrNull()?.authorAvatar ?: "")
-    val displayIsVerified = if (isOwnProfile) (currentUser?.isVerified ?: false) else (userPosts.firstOrNull()?.isVerified ?: false)
+    val externalProfile by viewModel.selectedUserProfileData.collectAsState()
+
+    val displayUserName = if (isOwnProfile) (currentUser?.fullName ?: "User") else (externalProfile?.fullName ?: selectedUserProfileName ?: userPosts.firstOrNull()?.authorName ?: "Flikata User")
+    val displayUserAvatar = if (isOwnProfile) (currentUser?.profilePic ?: "") else (externalProfile?.profilePic ?: userPosts.firstOrNull()?.authorAvatar ?: "")
+    val displayUserCover = if (isOwnProfile) (currentUser?.coverPic ?: "") else (externalProfile?.coverPic ?: "")
+    val displayIsVerified = if (isOwnProfile) (currentUser?.isVerified ?: false) else (externalProfile?.isVerifiedBool ?: userPosts.firstOrNull()?.isVerified ?: false)
+    val displayBio = if (isOwnProfile) (currentUser?.bio ?: "Drop a thought...") else (externalProfile?.bio ?: "Hey there! I am using Flikata.")
+    val displayOccupation = if (isOwnProfile) "Digital Creator" else (externalProfile?.occupation ?: "Digital Creator")
+    val displayLocation = if (isOwnProfile) "Dhaka, Bangladesh" else (externalProfile?.location ?: "Dhaka, Bangladesh")
+    val displayJoinedDate = if (isOwnProfile) (currentUser?.joinedDate ?: "Joined September 2026") else (externalProfile?.joinedDate ?: "Joined October 2026")
     var isFollowingOtherUser by remember(selectedUserProfileId) { mutableStateOf(false) }
 
     val userReels = remember(userPosts, allReelsList, isOwnProfile, selectedUserProfileId, selectedUserProfileName, currentUser) {
@@ -203,11 +214,17 @@ fun ProfileScreen(
 
     val userPhotos = userPosts.mapNotNull { it.imageUrl }
 
+    val isDark = SoftUITheme.isDark
     val screenBg = MaterialTheme.colorScheme.background
     val screenSurface = MaterialTheme.colorScheme.surface
     val screenVariant = MaterialTheme.colorScheme.surfaceVariant
     val textPrimary = MaterialTheme.colorScheme.onSurface
     val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+
+    val cardBg = if (isDark) Color(0xFF242730) else Color.White
+    val secondaryBtnBg = if (isDark) Color(0xFF2D3039) else Color(0xFFF3F7FD)
+    val secondaryBtnBorder = if (isDark) Color(0x33FFFFFF) else Color(0x33A0C0E8)
+    val secondaryBtnText = if (isDark) Color(0xFF3897F0) else Color(0xFF0075FF)
 
     Column(
         modifier = Modifier
@@ -240,10 +257,18 @@ fun ProfileScreen(
                                 )
                             )
                     ) {
-                        val coverModel: Any = if (!currentUser?.coverPic.isNullOrEmpty() && !currentUser?.coverPic!!.contains("unsplash")) {
-                            currentUser?.coverPic!!
+                        val coverModel: Any = if (isOwnProfile) {
+                            if (!currentUser?.coverPic.isNullOrEmpty() && !currentUser?.coverPic!!.contains("unsplash")) {
+                                currentUser?.coverPic!!
+                            } else {
+                                R.drawable.default_banner
+                            }
                         } else {
-                            R.drawable.default_banner
+                            if (displayUserCover.isNotBlank() && !displayUserCover.contains("unsplash")) {
+                                displayUserCover
+                            } else {
+                                R.drawable.default_banner
+                            }
                         }
 
                         AsyncImage(
@@ -259,19 +284,9 @@ fun ProfileScreen(
                                 .fillMaxWidth()
                                 .statusBarsPadding()
                                 .padding(horizontal = 12.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CoverCircleButton(
-                                icon = Icons.Default.ArrowBack,
-                                onClick = {
-                                    if (!isOwnProfile) {
-                                        viewModel.clearSelectedUserProfile()
-                                    }
-                                    onBack()
-                                }
-                            )
-
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (isOwnProfile) {
                                     CoverCircleButton(icon = Icons.Default.Edit, onClick = { viewModel.prepareEditProfile() })
@@ -316,13 +331,27 @@ fun ProfileScreen(
                         }
                     }
 
-                    // 2. White Curved Container Card Overlapping the Banner
-                    Surface(
-                        color = screenSurface,
-                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    // 2. 3D Neumorphic Curved Container Card Overlapping the Banner
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 210.dp)
+                            .shadow(
+                                elevation = if (isDark) 5.dp else 8.dp,
+                                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                                ambientColor = com.example.ui.components.SoftUITheme.ShadowDark,
+                                spotColor = com.example.ui.components.SoftUITheme.ShadowDark
+                            )
+                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                            .background(cardBg)
+                            .border(
+                                width = 1.dp,
+                                brush = if (isDark)
+                                    Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x11FFFFFF)))
+                                else
+                                    Brush.verticalGradient(listOf(Color(0xEEFFFFFF), Color(0x33A0C0E8))),
+                                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                            )
                     ) {
                         Column(
                             modifier = Modifier
@@ -367,66 +396,104 @@ fun ProfileScreen(
                             // Followers, Following, Posts line
                             val followersCount = if (isOwnProfile) (currentUser?.followersCount ?: 0) else (if (isFollowingOtherUser) 1241 else 1240)
                             val followingCount = if (isOwnProfile) (currentUser?.followingCount ?: 0) else 185
+                            val actualPostsCount = if (isOwnProfile) userPosts.size else (externalProfile?.postsCount ?: userPosts.size)
                             Text(
-                                text = "$followersCount followers • $followingCount following • ${userPosts.size} posts",
+                                text = "$followersCount followers • $followingCount following • $actualPostsCount posts",
                                 fontSize = 13.sp,
                                 color = textSecondary
                             )
 
+                            if (displayBio.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = displayBio,
+                                    fontSize = 13.5.sp,
+                                    color = textPrimary,
+                                    fontWeight = FontWeight.Medium,
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+
                             Spacer(modifier = Modifier.height(18.dp))
 
-                            // Side-by-side Action Buttons
+                            // 3D Side-by-side Action Buttons
                             if (isOwnProfile) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Button(
-                                        onClick = { },
-                                        colors = ButtonDefaults.buttonColors(containerColor = FlikataPrimary),
-                                        shape = RoundedCornerShape(10.dp),
+                                    // 3D Primary Button: Dashboard
+                                    Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(44.dp)
-                                            .testTag("dashboard_btn")
+                                            .height(46.dp)
+                                            .shadow(
+                                                elevation = 6.dp,
+                                                shape = RoundedCornerShape(14.dp),
+                                                ambientColor = Color(0x660075FF),
+                                                spotColor = Color(0x880052D4)
+                                            )
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(Color(0xFF0075FF), Color(0xFF0052D4))
+                                                )
+                                            )
+                                            .border(1.dp, Color(0x88FFFFFF), RoundedCornerShape(14.dp))
+                                            .clickable { }
+                                            .testTag("dashboard_btn"),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.BarChart,
-                                            contentDescription = "Dashboard",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Dashboard",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = Color.White
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.BarChart,
+                                                contentDescription = "Dashboard",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Dashboard",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = Color.White
+                                            )
+                                        }
                                     }
 
-                                    Button(
-                                        onClick = onCreateStoryClick,
-                                        colors = ButtonDefaults.buttonColors(containerColor = screenVariant),
-                                        shape = RoundedCornerShape(10.dp),
+                                    // 3D Secondary Button: Add to Story
+                                    Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(44.dp)
-                                            .testTag("add_to_story_btn")
+                                            .height(46.dp)
+                                            .shadow(
+                                                elevation = if (isDark) 2.dp else 4.dp,
+                                                shape = RoundedCornerShape(14.dp),
+                                                ambientColor = com.example.ui.components.SoftUITheme.ShadowDark
+                                            )
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(secondaryBtnBg)
+                                            .border(1.dp, secondaryBtnBorder, RoundedCornerShape(14.dp))
+                                            .clickable { onCreateStoryClick() }
+                                            .testTag("add_to_story_btn"),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = "Add Story",
-                                            tint = FlikataPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Add to Story",
-                                            fontWeight = FontWeight.Bold,
-                                            color = FlikataPrimary,
-                                            fontSize = 14.sp
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Add,
+                                                contentDescription = "Add Story",
+                                                tint = secondaryBtnText,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Add to Story",
+                                                fontWeight = FontWeight.Bold,
+                                                color = secondaryBtnText,
+                                                fontSize = 14.sp
+                                            )
+                                        }
                                     }
                                 }
                             } else {
@@ -434,54 +501,87 @@ fun ProfileScreen(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Button(
-                                        onClick = { isFollowingOtherUser = !isFollowingOtherUser },
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = if (isFollowingOtherUser) screenVariant else FlikataPrimary
-                                        ),
-                                        shape = RoundedCornerShape(10.dp),
+                                    // 3D Follow Button
+                                    Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(44.dp)
-                                            .testTag("follow_user_btn")
+                                            .height(46.dp)
+                                            .shadow(
+                                                elevation = if (isFollowingOtherUser) (if (isDark) 2.dp else 3.dp) else 6.dp,
+                                                shape = RoundedCornerShape(14.dp),
+                                                ambientColor = if (isFollowingOtherUser) com.example.ui.components.SoftUITheme.ShadowDark else Color(0x660075FF)
+                                            )
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .then(
+                                                if (isFollowingOtherUser) Modifier.background(secondaryBtnBg)
+                                                else Modifier.background(Brush.verticalGradient(listOf(Color(0xFF0075FF), Color(0xFF0052D4))))
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isFollowingOtherUser) secondaryBtnBorder else Color(0x88FFFFFF),
+                                                RoundedCornerShape(14.dp)
+                                            )
+                                            .clickable { isFollowingOtherUser = !isFollowingOtherUser }
+                                            .testTag("follow_user_btn"),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = if (isFollowingOtherUser) Icons.Default.Check else Icons.Default.PersonAdd,
-                                            contentDescription = null,
-                                            tint = if (isFollowingOtherUser) FlikataPrimary else Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (isFollowingOtherUser) "Following" else "Follow",
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
-                                            color = if (isFollowingOtherUser) FlikataPrimary else Color.White
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = if (isFollowingOtherUser) Icons.Default.Check else Icons.Default.PersonAdd,
+                                                contentDescription = null,
+                                                tint = if (isFollowingOtherUser) secondaryBtnText else Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = if (isFollowingOtherUser) "Following" else "Follow",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = if (isFollowingOtherUser) secondaryBtnText else Color.White
+                                            )
+                                        }
                                     }
 
-                                    Button(
-                                        onClick = { viewModel.navigateTo(Screen.CHATS) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = screenVariant),
-                                        shape = RoundedCornerShape(10.dp),
+                                    // 3D Message Button
+                                    Box(
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(44.dp)
-                                            .testTag("message_user_btn")
+                                            .height(46.dp)
+                                            .shadow(
+                                                elevation = if (isDark) 2.dp else 4.dp,
+                                                shape = RoundedCornerShape(14.dp),
+                                                ambientColor = com.example.ui.components.SoftUITheme.ShadowDark
+                                            )
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(secondaryBtnBg)
+                                            .border(1.dp, secondaryBtnBorder, RoundedCornerShape(14.dp))
+                                            .clickable {
+                                                val targetUid = selectedUserProfileId ?: userPosts.firstOrNull()?.userId
+                                                viewModel.openChatWithUser(
+                                                    name = displayUserName,
+                                                    avatar = displayUserAvatar,
+                                                    isVerified = displayIsVerified,
+                                                    userId = targetUid
+                                                )
+                                            }
+                                            .testTag("message_user_btn"),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ChatBubbleOutline,
-                                            contentDescription = "Message",
-                                            tint = FlikataPrimary,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Message",
-                                            fontWeight = FontWeight.Bold,
-                                            color = FlikataPrimary,
-                                            fontSize = 14.sp
-                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.ChatBubbleOutline,
+                                                contentDescription = "Message",
+                                                tint = secondaryBtnText,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Message",
+                                                fontWeight = FontWeight.Bold,
+                                                color = secondaryBtnText,
+                                                fontSize = 14.sp
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -799,18 +899,20 @@ fun ProfileScreen(
                                                 color = textPrimary
                                             )
 
-                                            IconButton(onClick = { viewModel.prepareEditProfile() }) {
-                                                Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit", tint = textPrimary)
+                                             if (isOwnProfile) {
+                                                IconButton(onClick = { viewModel.prepareEditProfile() }) {
+                                                    Icon(imageVector = Icons.Default.Edit, contentDescription = "Edit", tint = textPrimary)
+                                                }
                                             }
                                         }
 
                                         Spacer(modifier = Modifier.height(12.dp))
 
-                                        AboutDetailRow(icon = Icons.Default.Work, text = viewModel.editOccupation.value.ifBlank { "Software Engineer" })
-                                        AboutDetailRow(icon = Icons.Default.School, text = "Studied Computer Science")
-                                        AboutDetailRow(icon = Icons.Default.Home, text = "Lives in ${viewModel.editLocation.value.ifBlank { "Dhaka, Bangladesh" }}")
+                                        AboutDetailRow(icon = Icons.Default.Work, text = displayOccupation)
+                                        AboutDetailRow(icon = Icons.Default.School, text = "Studied at University")
+                                        AboutDetailRow(icon = Icons.Default.Home, text = "Lives in $displayLocation")
                                         AboutDetailRow(icon = Icons.Default.Favorite, text = "Single")
-                                        AboutDetailRow(icon = Icons.Default.CalendarMonth, text = currentUser?.joinedDate ?: "Joined September 2026")
+                                        AboutDetailRow(icon = Icons.Default.CalendarMonth, text = displayJoinedDate)
                                     }
                                 }
                             }

@@ -7,7 +7,9 @@ import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -130,12 +132,31 @@ fun PostCard(
     val textPrimary = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
     val textSecondary = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
 
-    Surface(
-        color = cardSurface,
+    val isDark = SoftUITheme.isDark
+    val actualCardBg = if (isDark) Color(0xFF242730) else Color.White
+    val cardBorderBrush = if (isDark) {
+        Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x11FFFFFF)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xEEFFFFFF), Color(0x33A0C0E8)))
+    }
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        shadowElevation = 1.dp
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .shadow(
+                elevation = if (isDark) 3.dp else 2.dp,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = SoftUITheme.ShadowDark,
+                spotColor = SoftUITheme.ShadowDark
+            )
+            .clip(RoundedCornerShape(18.dp))
+            .background(actualCardBg)
+            .border(
+                width = 1.dp,
+                brush = cardBorderBrush,
+                shape = RoundedCornerShape(18.dp)
+            )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Header
@@ -367,7 +388,7 @@ fun PostCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .pointerInput(Unit) {
+                            .pointerInput(post.id, post.userReaction) {
                                 detectTapGestures(
                                     onTap = {
                                         if (post.userReaction != null) {

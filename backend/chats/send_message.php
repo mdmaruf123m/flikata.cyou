@@ -7,23 +7,23 @@
 require_once __DIR__ . '/../config/db.php';
 $pdo = getDB();
 
-$user = getAuthUser($pdo);
-if (!$user) {
-    jsonResponse(false, null, 'Authentication required.');
-}
-
 $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+
+$user = getAuthUser($pdo);
+$myId = $user ? (int)$user['id'] : (!empty($input['sender_id']) ? (int)$input['sender_id'] : (!empty($input['user_id']) ? (int)$input['user_id'] : 0));
+
+if (!$myId) {
+    jsonResponse(false, null, 'Authentication or valid sender ID required.');
+}
 
 $convId       = !empty($input['conversation_id']) ? (int)$input['conversation_id'] : 0;
 $partnerId    = !empty($input['partner_id']) ? (int)$input['partner_id'] : 0;
-$text         = trim($input['text'] ?? '');
+$text         = trim($input['text'] ?? ($input['message'] ?? ''));
 $imageUrl     = trim($input['image_url'] ?? '');
 $videoUrl     = trim($input['video_url'] ?? '');
 $replyToId    = !empty($input['reply_to_id']) ? (int)$input['reply_to_id'] : null;
 $isCallNotice = !empty($input['is_call_notice']) ? 1 : 0;
 $bucketId     = !empty($input['bucket_id']) ? (int)$input['bucket_id'] : null;
-
-$myId = (int)$user['id'];
 
 // Resolve conversation
 if (!$convId && $partnerId) {

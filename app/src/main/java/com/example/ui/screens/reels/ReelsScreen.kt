@@ -48,7 +48,12 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Share
@@ -123,6 +128,7 @@ fun ReelsScreen(
     val reelsList by viewModel.reels.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val targetReelId by viewModel.targetReelId.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     var reelToDelete by remember { mutableStateOf<ReelModel?>(null) }
     val pagerState = rememberPagerState(pageCount = { reelsList.size })
 
@@ -320,6 +326,7 @@ fun ReelsScreen(
             ReelCommentsBottomSheet(
                 reel = activeReel,
                 currentUser = currentUser,
+                viewModel = viewModel,
                 onDismiss = { selectedReelForComments = null },
                 onAddComment = { newText ->
                     // Save real comment to MySQL database
@@ -773,7 +780,7 @@ private fun ReelPageItem(
                     )
                 }
 
-                // 5. DELETE REEL BUTTON (If owned by user)
+                // DELETE REEL BUTTON (If owned by user)
                 if (isOwnReel) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -876,13 +883,26 @@ private fun SpinningVinylDisc(authorAvatar: String) {
 private fun ReelCommentsBottomSheet(
     reel: ReelModel,
     currentUser: com.example.data.model.User?,
+    viewModel: MainViewModel,
     onDismiss: () -> Unit,
     onAddComment: (String) -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var commentInput by remember { mutableStateOf("") }
-    val commentsList = remember(reel.id, reel.comments.size) {
+    val commentsList = remember(reel.id) {
         mutableStateListOf<ReelCommentItem>().apply { addAll(reel.comments) }
+    }
+
+    LaunchedEffect(reel.id) {
+        viewModel.getReelComments(reel.id) { serverComments ->
+            if (serverComments.isNotEmpty()) {
+                commentsList.clear()
+                commentsList.addAll(serverComments)
+                reel.comments.clear()
+                reel.comments.addAll(serverComments)
+                reel.commentsCount = maxOf(reel.commentsCount, serverComments.size)
+            }
+        }
     }
 
     ModalBottomSheet(
@@ -1065,6 +1085,26 @@ private fun ReelCommentsBottomSheet(
                         .imePadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val sendCommentAction = {
+                        if (commentInput.trim().isNotEmpty()) {
+                            val text = commentInput.trim()
+                            commentInput = ""
+                            val authorName = currentUser?.fullName ?: "Me"
+                            val authorAvatar = currentUser?.profilePic ?: ""
+                            val isVerified = currentUser?.isVerified ?: false
+                            val localComment = ReelCommentItem(
+                                id = System.currentTimeMillis().toString(),
+                                authorName = authorName,
+                                authorAvatar = authorAvatar,
+                                text = text,
+                                timestamp = "Just now",
+                                isVerified = isVerified
+                            )
+                            commentsList.add(0, localComment)
+                            onAddComment(text)
+                        }
+                    }
+
                     // Light Gray Pill Input Box
                     Box(
                         modifier = Modifier
@@ -1081,6 +1121,13 @@ private fun ReelCommentsBottomSheet(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("reel_comment_input"),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Send,
+                                keyboardType = KeyboardType.Text
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSend = { sendCommentAction() }
+                            ),
                             textStyle = androidx.compose.ui.text.TextStyle(
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 14.sp
@@ -1107,25 +1154,7 @@ private fun ReelCommentsBottomSheet(
                             .size(42.dp)
                             .clip(CircleShape)
                             .background(FlikataPrimary)
-                            .clickable {
-                                if (commentInput.trim().isNotEmpty()) {
-                                    val text = commentInput.trim()
-                                    commentInput = ""
-                                    val authorName = currentUser?.fullName ?: "Me"
-                                    val authorAvatar = currentUser?.profilePic ?: ""
-                                    val isVerified = currentUser?.isVerified ?: false
-                                    val localComment = ReelCommentItem(
-                                        id = System.currentTimeMillis().toString(),
-                                        authorName = authorName,
-                                        authorAvatar = authorAvatar,
-                                        text = text,
-                                        timestamp = "Just now",
-                                        isVerified = isVerified
-                                    )
-                                    commentsList.add(0, localComment)
-                                    onAddComment(text)
-                                }
-                            },
+                            .clickable { sendCommentAction() },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -1137,96 +1166,6 @@ private fun ReelCommentsBottomSheet(
                     }
                 }
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ReelShareBottomSheet(
-    reel: ReelModel,
-    onDismiss: () -> Unit
-) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val sheetState = rememberModalBottomSheetState()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp)
-        ) {
-            Text(
-                text = "Share Reel",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        reel.sharesCount += 1
-                        onDismiss()
-                    }
-                    .padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(FlikataPrimary.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, tint = FlikataPrimary)
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text("Share to Feed", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Post this reel to your Flikata timeline", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        val cleanId = reel.id.removePrefix("post_")
-                        val shareUrl = "https://flikata.cyou/backend/post.php?reel_id=$cleanId"
-                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                        val clip = android.content.ClipData.newPlainText("Flikata Reel Link", shareUrl)
-                        clipboard.setPrimaryClip(clip)
-                        android.widget.Toast.makeText(context, "Link copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
-                        onDismiss()
-                    }
-                    .padding(vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF45BD62).copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color(0xFF45BD62))
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column {
-                    Text("Copy Link", fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Copy link to clipboard to share anywhere", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }

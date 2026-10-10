@@ -11,6 +11,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -230,13 +231,16 @@ fun FlikataVideoPlayer(
                 )
             }
     ) {
-        // ExoPlayer View
+        // ExoPlayer View (Explicitly unfocusable to prevent LazyColumn jumping to top on recomposition)
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = false
                     this.resizeMode = resizeMode
+                    isFocusable = false
+                    isFocusableInTouchMode = false
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT
@@ -246,8 +250,13 @@ fun FlikataVideoPlayer(
             update = { playerView ->
                 playerView.player = exoPlayer
                 playerView.resizeMode = resizeMode
+                playerView.isFocusable = false
+                playerView.isFocusableInTouchMode = false
+                playerView.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             },
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .focusProperties { canFocus = false }
         )
 
         // Center Play / Pause Indicator Badge that flashes on tap

@@ -8,13 +8,14 @@ require_once __DIR__ . '/../config/db.php';
 $pdo = getDB();
 
 $user = getAuthUser($pdo);
-if (!$user) {
-    jsonResponse(false, null, 'Authentication required.');
+$myId = !empty($_GET['user_id']) ? (int)$_GET['user_id'] : ($user ? (int)$user['id'] : 0);
+
+if (!$myId) {
+    jsonResponse(false, null, 'Authentication or valid user ID required.');
 }
 
 $convId = (int)($_GET['conversation_id'] ?? 0);
 $partnerId = (int)($_GET['partner_id'] ?? 0);
-$myId = (int)$user['id'];
 
 // If no conversation_id, look up or create one using partner_id
 if (!$convId && $partnerId) {

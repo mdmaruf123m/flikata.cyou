@@ -57,9 +57,20 @@ fun FlikataAvatar(
             }
         )
 
-    if (!avatarUrl.isNullOrBlank()) {
+    val resolvedUrl = androidx.compose.runtime.remember(avatarUrl) {
+        val u = avatarUrl?.trim()
+        if (u.isNullOrBlank()) null
+        else if (u.startsWith("http://") || u.startsWith("https://") || u.startsWith("file://") || u.startsWith("content://") || u.startsWith("data:")) u
+        else {
+            val base = com.example.data.remote.ApiClient.baseUrl.trimEnd('/')
+            val cleanPath = u.trimStart('/')
+            "$base/$cleanPath"
+        }
+    }
+
+    if (!resolvedUrl.isNullOrBlank()) {
         AsyncImage(
-            model = avatarUrl,
+            model = resolvedUrl,
             contentDescription = cleanName,
             contentScale = ContentScale.Crop,
             modifier = baseModifier

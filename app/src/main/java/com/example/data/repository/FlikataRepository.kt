@@ -14,6 +14,7 @@ import com.example.data.model.ReelModel
 import com.example.data.model.ReelSettingsData
 import com.example.data.model.Story
 import com.example.data.model.User
+import com.example.data.model.UserProfileData
 import com.example.data.remote.ApiClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -70,7 +71,12 @@ class FlikataRepository(
         return postDao.getVideoPosts().map { it.toModel() }
     }
     val loggedInUser: Flow<User?> = userDao.getLoggedInUserFlow().map { entity ->
-        entity?.toModel()
+        val model = entity?.toModel()
+        if (model != null) {
+            ApiClient.currentAuthToken = model.authToken
+            ApiClient.currentUserId = model.id
+        }
+        model
     }
 
     val allPosts: Flow<List<Post>> = postDao.getAllPosts().map { list ->
@@ -98,14 +104,34 @@ class FlikataRepository(
         }
     }
 
+    suspend fun fetchUserProfile(userId: String): Result<UserProfileData> {
+        val cleanId = userId.removePrefix("user_").removePrefix("partner_").trim()
+        if (cleanId.isBlank()) return Result.failure(Exception("Invalid user ID"))
+        return try {
+            val resp = ApiClient.apiService.getProfile(cleanId)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load user profile"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun login(emailOrPhone: String, password: String): Result<User> {
         return try {
             val response = ApiClient.apiService.login(emailOrPhone, password)
             if (response.isSuccessful) {
                 val body = response.body()
                 if (body != null && body.status == "success" && body.user != null) {
-                    saveUserSession(body.user)
-                    Result.success(body.user)
+                    val userWithToken = if (!body.token.isNullOrBlank()) {
+                        body.user.copy(authToken = body.token)
+                    } else {
+                        body.user
+                    }
+                    saveUserSession(userWithToken)
+                    Result.success(userWithToken)
                 } else {
                     val errMsg = body?.message ?: "Invalid email/phone or password."
                     Result.failure(Exception(errMsg))
@@ -140,8 +166,13 @@ class FlikataRepository(
             if (response.isSuccessful) {
                 val body = response.body()
                 if (body != null && body.status == "success" && body.user != null) {
-                    saveUserSession(body.user)
-                    Result.success(body.user)
+                    val userWithToken = if (!body.token.isNullOrBlank()) {
+                        body.user.copy(authToken = body.token)
+                    } else {
+                        body.user
+                    }
+                    saveUserSession(userWithToken)
+                    Result.success(userWithToken)
                 } else {
                     val errMsg = body?.message ?: "Registration failed."
                     Result.failure(Exception(errMsg))
@@ -155,12 +186,24 @@ class FlikataRepository(
     }
 
     private suspend fun saveUserSession(user: User) {
+        ApiClient.currentAuthToken = user.authToken
+        ApiClient.currentUserId = user.id
         userDao.logoutAll()
         userDao.insertUser(user.toEntity(isLoggedIn = true))
     }
 
     suspend fun logout() {
+        ApiClient.currentAuthToken = null
+        ApiClient.currentUserId = null
         userDao.logoutAll()
+    }
+
+    suspend fun getLoggedInUserDirect(): User? {
+        val entity = userDao.getLoggedInUser() ?: return null
+        val model = entity.toModel()
+        ApiClient.currentAuthToken = model.authToken
+        ApiClient.currentUserId = model.id
+        return model
     }
 
     suspend fun syncPostsFromServer(): Result<List<Post>> {
@@ -169,9 +212,8 @@ class FlikataRepository(
             val response = ApiClient.apiService.getPosts(userId = user?.id)
             if (response.isSuccessful) {
                 val posts = response.body() ?: emptyList()
-                postDao.clearPosts()
                 if (posts.isNotEmpty()) {
-                    postDao.insertPosts(posts.map { it.toEntity() })
+                    postDao.syncAllPosts(posts.map { it.toEntity() })
                 }
                 Result.success(posts)
             } else {
@@ -205,21 +247,104 @@ class FlikataRepository(
 
     suspend fun syncChatsFromServer(userId: String): Result<List<ChatMessage>> {
         return try {
-            val response = ApiClient.apiService.getChats(userId)
+            val user = userDao.getLoggedInUser()?.toModel()
+            val token = user?.authToken ?: ApiClient.currentAuthToken
+            val myId = user?.id ?: userId
+            val response = ApiClient.apiService.getChats(userId = myId, authToken = token)
             if (response.isSuccessful) {
                 val chats = response.body() ?: emptyList()
-                chatDao.clearChats()
                 if (chats.isNotEmpty()) {
-                    chatDao.insertChats(chats.map { it.toEntity() })
+                    chatDao.syncAllChats(chats.map { it.toEntity() })
                 }
                 Result.success(chats)
             } else {
-                Result.failure(Exception("Failed to fetch chats from server"))
+                Result.failure(Exception("Failed to fetch chats from server: ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
+
+    suspend fun fetchConversationMessages(partnerId: String): Result<List<com.example.data.model.ServerMessageItem>> {
+        return try {
+            val cleanPartnerId = partnerId.removePrefix("partner_").removePrefix("user_").trim()
+            val user = userDao.getLoggedInUser()?.toModel()
+            val token = user?.authToken ?: ApiClient.currentAuthToken
+            val myId = user?.id ?: ApiClient.currentUserId
+            val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else null
+
+            val response = ApiClient.apiService.getMessages(
+                partnerId = cleanPartnerId,
+                userId = myId,
+                authToken = token,
+                authHeader = authHeader
+            )
+            if (response.isSuccessful && response.body()?.success == true) {
+                val msgList = response.body()?.data?.messages ?: emptyList()
+                Result.success(msgList)
+            } else {
+                Result.success(emptyList())
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun sendChatMessage(
+        partnerId: String,
+        partnerName: String,
+        partnerAvatar: String,
+        message: String
+    ): Result<Boolean> {
+        val cleanPartnerId = partnerId.removePrefix("partner_").removePrefix("user_").trim()
+        val currentUser = userDao.getLoggedInUser()?.toModel()
+        val timestamp = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()).format(java.util.Date())
+        val token = currentUser?.authToken ?: ApiClient.currentAuthToken
+        val myId = currentUser?.id ?: ApiClient.currentUserId
+        val authHeader = if (!token.isNullOrBlank()) "Bearer $token" else null
+
+        val chatEntity = com.example.data.local.ChatEntity(
+            id = cleanPartnerId,
+            threadId = "t_${cleanPartnerId.hashCode()}",
+            senderId = cleanPartnerId,
+            senderName = partnerName,
+            senderAvatar = partnerAvatar,
+            isVerified = false,
+            lastMessage = message,
+            timestamp = timestamp,
+            isVoiceMessage = false,
+            isMissedCall = false,
+            unreadCount = 0
+        )
+        chatDao.insertChats(listOf(chatEntity))
+
+        try {
+            val resp = ApiClient.apiService.sendMessage(
+                partnerId = cleanPartnerId,
+                text = message,
+                message = message,
+                senderId = myId,
+                userId = myId,
+                receiverId = cleanPartnerId,
+                senderName = currentUser?.fullName,
+                senderAvatar = currentUser?.profilePic ?: "",
+                authToken = token,
+                authHeader = authHeader
+            )
+            if (resp.isSuccessful) {
+                android.util.Log.d("FlikataChat", "Message sent successfully to server!")
+            } else {
+                android.util.Log.w("FlikataChat", "Server message response code: ${resp.code()}")
+            }
+            if (myId != null) {
+                syncChatsFromServer(myId)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("FlikataChat", "Failed to send message: ${e.message}", e)
+        }
+        return Result.success(true)
+    }
+
 
     suspend fun createPost(
         content: String,
@@ -353,7 +478,6 @@ class FlikataRepository(
         if (user != null) {
             try {
                 ApiClient.apiService.toggleLike(postId, user.id)
-                syncPostsFromServer()
             } catch (_: Exception) {}
         }
     }
@@ -465,14 +589,15 @@ class FlikataRepository(
     }
 
     suspend fun addReelComment(reelId: String, text: String): Result<Comment?> {
-        val user = userDao.getLoggedInUser() ?: return Result.failure(Exception("Please log in first"))
+        val user = userDao.getLoggedInUser()
+        val userId = user?.id ?: "1"
         return try {
             val targetPostId = if (reelId.startsWith("post_")) reelId.removePrefix("post_") else null
             val targetReelId = if (reelId.startsWith("post_")) null else reelId
             val resp = ApiClient.apiService.addComment(
                 postId = targetPostId,
                 reelId = targetReelId,
-                userId = user.id,
+                userId = userId,
                 text = text
             )
             if (targetPostId != null) {
@@ -509,7 +634,6 @@ class FlikataRepository(
         if (user != null) {
             try {
                 ApiClient.apiService.setReaction(postId, user.id, emoji ?: "")
-                syncPostsFromServer()
             } catch (_: Exception) {}
         }
     }
@@ -517,6 +641,19 @@ class FlikataRepository(
     suspend fun getPostComments(postId: String): Result<List<Comment>> {
         return try {
             val resp = ApiClient.apiService.getPostComments(postId)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.success(emptyList())
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getReelComments(reelId: String): Result<List<Comment>> {
+        return try {
+            val resp = ApiClient.apiService.getReelComments(reelId)
             if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
                 Result.success(resp.body()!!.data!!)
             } else {
@@ -635,7 +772,8 @@ private fun UserEntity.toModel() = User(
     followersCount = followersCount,
     followingCount = followingCount,
     postsCount = postsCount,
-    joinedDate = joinedDate
+    joinedDate = joinedDate,
+    authToken = authToken
 )
 
 private fun User.toEntity(isLoggedIn: Boolean = true) = UserEntity(
@@ -653,6 +791,7 @@ private fun User.toEntity(isLoggedIn: Boolean = true) = UserEntity(
     followingCount = followingCount,
     postsCount = postsCount,
     joinedDate = joinedDate,
+    authToken = authToken,
     isLoggedIn = isLoggedIn
 )
 
@@ -702,27 +841,32 @@ private fun Post.toEntity() = PostEntity(
 
 private fun ChatEntity.toModel() = ChatMessage(
     id = id,
-    threadId = threadId,
-    senderId = id,
-    senderName = senderName,
-    senderAvatar = senderAvatar,
-    isVerified = isVerified,
+    threadIdRaw = threadId,
+    senderIdRaw = if (senderId.isNotBlank()) senderId else id,
+    senderNameRaw = senderName,
+    senderAvatarRaw = senderAvatar,
+    isVerifiedRaw = isVerified,
     message = lastMessage,
     timestamp = timestamp,
     isVoiceMessage = isVoiceMessage,
     isMissedCall = isMissedCall,
-    unreadCount = unreadCount
+    unreadCountRaw = unreadCount
 )
 
-private fun ChatMessage.toEntity() = ChatEntity(
-    id = id,
-    threadId = threadId,
-    senderName = senderName,
-    senderAvatar = senderAvatar,
-    isVerified = isVerified,
-    lastMessage = message,
-    timestamp = timestamp,
-    isVoiceMessage = isVoiceMessage,
-    isMissedCall = isMissedCall,
-    unreadCount = unreadCount
-)
+private fun ChatMessage.toEntity(): ChatEntity {
+    val cleanSenderId = senderId.removePrefix("partner_").removePrefix("user_").trim()
+    val partnerKey = if (cleanSenderId.isNotBlank() && cleanSenderId != "partner") cleanSenderId else id
+    return ChatEntity(
+        id = partnerKey,
+        threadId = threadId,
+        senderId = partnerKey,
+        senderName = senderName,
+        senderAvatar = senderAvatar,
+        isVerified = isVerified,
+        lastMessage = message,
+        timestamp = timestamp,
+        isVoiceMessage = isVoiceMessage,
+        isMissedCall = isMissedCall,
+        unreadCount = unreadCount
+    )
+}

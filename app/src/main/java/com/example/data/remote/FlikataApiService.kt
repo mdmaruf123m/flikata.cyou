@@ -11,16 +11,19 @@ import com.example.data.model.ReelModel
 import com.example.data.model.ReelsResponse
 import com.example.data.model.ReelSettingsData
 import com.example.data.model.ReelSettingsResponse
+import com.example.data.model.ServerMessagesResponse
 import com.example.data.model.StoriesResponse
 import com.example.data.model.Story
 import com.example.data.model.UploadResponse
 import com.example.data.model.User
+import com.example.data.model.UserProfileResponse
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
@@ -116,10 +119,39 @@ interface FlikataApiService {
         @Query("post_id") postId: String
     ): Response<CommentsListResponse>
 
+    @GET("comments/get_comments.php")
+    suspend fun getReelComments(
+        @Query("reel_id") reelId: String
+    ): Response<CommentsListResponse>
+
     @GET("chats/get_conversations.php")
     suspend fun getChats(
-        @Query("user_id") userId: String
+        @Query("user_id") userId: String,
+        @Query("auth_token") authToken: String? = null
     ): Response<List<ChatMessage>>
+
+    @GET("chats/get_messages.php")
+    suspend fun getMessages(
+        @Query("partner_id") partnerId: String,
+        @Query("user_id") userId: String? = null,
+        @Query("auth_token") authToken: String? = null,
+        @Header("Authorization") authHeader: String? = null
+    ): Response<ServerMessagesResponse>
+
+    @FormUrlEncoded
+    @POST("chats/send_message.php")
+    suspend fun sendMessage(
+        @Field("partner_id") partnerId: String,
+        @Field("text") text: String,
+        @Field("message") message: String,
+        @Field("sender_id") senderId: String? = null,
+        @Field("user_id") userId: String? = null,
+        @Field("receiver_id") receiverId: String? = null,
+        @Field("sender_name") senderName: String? = null,
+        @Field("sender_avatar") senderAvatar: String? = null,
+        @Field("auth_token") authToken: String? = null,
+        @Header("Authorization") authHeader: String? = null
+    ): Response<GenericResponse>
 
     @FormUrlEncoded
     @POST("profile/update_profile.php")
@@ -132,6 +164,11 @@ interface FlikataApiService {
         @Field("profile_pic") profilePic: String? = null,
         @Field("cover_pic") coverPic: String? = null
     ): Response<GenericResponse>
+
+    @GET("profile/get_profile.php")
+    suspend fun getProfile(
+        @Query("user_id") userId: String
+    ): Response<UserProfileResponse>
 
     @FormUrlEncoded
     @POST("posts/delete_post.php")

@@ -3,6 +3,7 @@ package com.example.ui.screens.chats
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,13 +28,12 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PhoneCallback
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,15 +42,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.data.model.ChatMessage
 import com.example.ui.components.FlikataAvatar
+import com.example.ui.components.SoftUITheme
+import com.example.ui.theme.FlikataError
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.FlikataPrimary
 import com.example.ui.viewmodel.MainViewModel
@@ -62,6 +70,9 @@ data class ActiveUser(
     val isVerified: Boolean = false
 )
 
+/**
+ * 3D Soft Neumorphic Chats Screen with tactile cards, active stories row, and verified avatars
+ */
 @Composable
 fun ChatsScreen(
     viewModel: MainViewModel,
@@ -69,29 +80,44 @@ fun ChatsScreen(
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
     val chats by viewModel.chats.collectAsState()
-    val activeUsers = remember(chats) {
-        chats.map {
+    val allPosts by viewModel.posts.collectAsState()
+    val activeUsers = remember(chats, allPosts, currentUser) {
+        val fromChats = chats.map {
             ActiveUser(
                 id = it.senderId,
                 name = it.senderName,
                 avatar = it.senderAvatar,
                 isVerified = it.isVerified
             )
-        }.distinctBy { it.name }
+        }
+        val fromPosts = allPosts.filter { it.userId.isNotBlank() && it.userId != currentUser?.id && it.authorName != currentUser?.fullName }.map {
+            ActiveUser(
+                id = it.userId,
+                name = it.authorName,
+                avatar = it.authorAvatar,
+                isVerified = it.isVerified
+            )
+        }
+        val communityDefaults = listOf(
+            ActiveUser("4", "আকাশ আহমেদ", "https://pub-c98a2e409ad94dbb8aded428cf2952a1.r2.dev/images/flikata_20261004_090334_c57b9129d2b6.jpg", false),
+            ActiveUser("3", "Maruf Home", "https://pub-c98a2e409ad94dbb8aded428cf2952a1.r2.dev/images/flikata_20261003_055434_34e12090472c.jpg", false),
+            ActiveUser("8", "Test User One", "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400", true),
+            ActiveUser("9", "Test User Two", "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400", true)
+        ).filter { it.id != currentUser?.id }
+
+        (fromChats + fromPosts + communityDefaults).distinctBy { if (it.id.isNotBlank()) it.id else it.name }
     }
     var searchQuery by remember { mutableStateOf("") }
 
-    androidx.compose.runtime.LaunchedEffect(currentUser) {
-        currentUser?.id?.let { uid ->
-            viewModel.repository.syncChatsFromServer(uid)
+    LaunchedEffect(currentUser) {
+        val uid = currentUser?.id
+        if (!uid.isNullOrBlank()) {
+            while (true) {
+                viewModel.repository.syncChatsFromServer(uid)
+                kotlinx.coroutines.delay(2500)
+            }
         }
     }
-
-    val bg = MaterialTheme.colorScheme.background
-    val surfaceColor = MaterialTheme.colorScheme.surface
-    val textPrimary = MaterialTheme.colorScheme.onSurface
-    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)
 
     val filteredChats = remember(chats, searchQuery) {
         if (searchQuery.isBlank()) {
@@ -107,59 +133,120 @@ fun ChatsScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(bg)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        SoftUITheme.BackgroundGradientTop,
+                        SoftUITheme.BackgroundGradientBottom
+                    )
+                )
+            )
             .statusBarsPadding()
     ) {
-        // Top Header
-        Row(
+        // 3D Neumorphic Top Header
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .padding(horizontal = 14.dp, vertical = 8.dp)
         ) {
-            Text(
-                text = "Chats",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = textPrimary
-            )
-
-            // Online Count Badge
-            Surface(
-                color = Color(0xFFE7F3FF),
-                shape = RoundedCornerShape(12.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
+                // Title in 3D royal blue gradient
+                Text(
+                    text = "Chats",
+                    style = TextStyle(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color(0xFF0075FF), Color(0xFF0052D4))
+                        ),
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.2.sp
+                    )
+                )
+
                 Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // 3D Online Count Badge
                     Box(
                         modifier = Modifier
-                            .size(8.dp)
+                            .shadow(2.dp, RoundedCornerShape(14.dp), ambientColor = SoftUITheme.ShadowDark)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                            .border(1.dp, Color(0x33A0C0E8), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF45BD62))
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "${activeUsers.size.coerceAtLeast(1)} Active",
+                                color = Color(0xFF0075FF),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    // 3D Menu Button
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .shadow(3.dp, CircleShape, ambientColor = SoftUITheme.ShadowDark)
                             .clip(CircleShape)
-                            .background(Color(0xFF45BD62))
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = "${activeUsers.size} Active",
-                        color = FlikataPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color.White, Color(0xFFE8F1FC))
+                                )
+                            )
+                            .border(1.dp, Color(0xEEFFFFFF), CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onMenuClick
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_custom_menu),
+                            contentDescription = "Menu",
+                            tint = Color(0xFF1E3A5F),
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
             }
         }
 
-        // Search Bar
+        // 3D Neumorphic Search Bar
+        val isDark = SoftUITheme.isDark
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-                .height(42.dp)
-                .clip(RoundedCornerShape(21.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+                .shadow(
+                    elevation = if (isDark) 2.dp else 1.dp,
+                    shape = RoundedCornerShape(22.dp),
+                    ambientColor = SoftUITheme.ShadowDark
+                )
+                .clip(RoundedCornerShape(22.dp))
+                .background(if (isDark) Color(0xFF1E2128) else Color.White)
+                .border(
+                    width = 1.dp,
+                    brush = if (isDark) Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x11FFFFFF)))
+                    else Brush.verticalGradient(listOf(Color(0xEEFFFFFF), Color(0x44A0C0E8))),
+                    shape = RoundedCornerShape(22.dp)
+                )
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             contentAlignment = Alignment.CenterStart
         ) {
             Row(
@@ -169,21 +256,26 @@ fun ChatsScreen(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "Search",
-                    tint = textSecondary,
-                    modifier = Modifier.size(18.dp)
+                    tint = SoftUITheme.IconTint,
+                    modifier = Modifier.size(19.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(9.dp))
                 BasicTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.weight(1f),
-                    textStyle = TextStyle(color = textPrimary, fontSize = 14.sp),
+                    textStyle = TextStyle(
+                        color = SoftUITheme.TextDark,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = SolidColor(Color(0xFF0075FF)),
                     singleLine = true,
                     decorationBox = { innerTextField ->
                         if (searchQuery.isEmpty()) {
                             Text(
-                                text = "Search messages...",
-                                color = textSecondary.copy(alpha = 0.7f),
+                                text = "Search conversations...",
+                                color = SoftUITheme.TextMuted,
                                 fontSize = 14.sp
                             )
                         }
@@ -193,12 +285,12 @@ fun ChatsScreen(
                 if (searchQuery.isNotEmpty()) {
                     IconButton(
                         onClick = { searchQuery = "" },
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Clear,
                             contentDescription = "Clear",
-                            tint = textSecondary,
+                            tint = SoftUITheme.IconTint,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -206,62 +298,53 @@ fun ChatsScreen(
             }
         }
 
+        // Chat List & Active users in LazyColumn
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp)
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Active Online Users Horizontal Row (Left to Right serial)
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+            // Active Users Row
+            if (activeUsers.isNotEmpty() && searchQuery.isBlank()) {
+                item {
+                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
                         Text(
                             text = "Active Now",
-                            fontSize = 13.sp,
+                            fontSize = 13.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = textSecondary
+                            color = SoftUITheme.TextDark,
+                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
                         )
-                    }
-
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        modifier = Modifier.padding(top = 6.dp, bottom = 6.dp)
-                    ) {
-                        items(activeUsers) { user ->
-                            ActiveUserItem(
-                                user = user,
-                                onClick = {
-                                    viewModel.openChatWithUser(
-                                        name = user.name,
-                                        avatar = user.avatar,
-                                        isVerified = user.isVerified
-                                    )
-                                }
-                            )
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(vertical = 4.dp)
+                        ) {
+                            items(activeUsers, key = { it.id }) { user ->
+                                ActiveUser3DItem(
+                                    user = user,
+                                    onClick = {
+                                        viewModel.openChatWithUser(
+                                            name = user.name,
+                                            avatar = user.avatar,
+                                            isVerified = user.isVerified,
+                                            userId = user.id
+                                        )
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-
-                Divider(color = dividerColor, thickness = 0.5.dp)
             }
 
-            // Section Header: Recent Conversations
+            // Section Header
             item {
                 Text(
                     text = "Recent Conversations",
-                    fontSize = 13.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
-                    color = textSecondary,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    color = SoftUITheme.TextDark,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp, start = 2.dp)
                 )
             }
 
@@ -271,26 +354,52 @@ fun ChatsScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 36.dp),
-                        contentAlignment = Alignment.Center
+                            .padding(vertical = 36.dp)
+                            .shadow(3.dp, RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.White)
+                            .border(1.dp, Color(0x33A0C0E8), RoundedCornerShape(16.dp))
+                            .padding(24.dp)
                     ) {
-                        Text(
-                            text = if (searchQuery.isBlank()) "No conversation history yet" else "No matching chats found",
-                            color = textSecondary,
-                            fontSize = 14.sp
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = if (searchQuery.isBlank()) "No conversation history yet" else "No existing chat for \"$searchQuery\"",
+                                color = SoftUITheme.TextSecondary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (searchQuery.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .shadow(3.dp, RoundedCornerShape(14.dp), ambientColor = Color(0x660075FF))
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(Brush.verticalGradient(listOf(Color(0xFF0075FF), Color(0xFF0052D4))))
+                                        .clickable {
+                                            viewModel.openChatWithUser(
+                                                name = searchQuery,
+                                                avatar = "",
+                                                userId = searchQuery.removePrefix("user_").trim().toIntOrNull()?.toString()
+                                            )
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 9.dp)
+                                ) {
+                                    Text(
+                                        text = "Message \"$searchQuery\"",
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             } else {
                 items(filteredChats, key = { it.id }) { chat ->
-                    ChatItemRow(
+                    Chat3DItemRow(
                         chat = chat,
                         onClick = { viewModel.openChatDetail(chat) }
-                    )
-                    Divider(
-                        color = dividerColor,
-                        thickness = 0.5.dp,
-                        modifier = Modifier.padding(start = 74.dp)
                     )
                 }
             }
@@ -298,8 +407,11 @@ fun ChatsScreen(
     }
 }
 
+/**
+ * 3D Neumorphic Active User Avatar
+ */
 @Composable
-private fun ActiveUserItem(
+private fun ActiveUser3DItem(
     user: ActiveUser,
     onClick: () -> Unit
 ) {
@@ -307,22 +419,47 @@ private fun ActiveUserItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .width(62.dp)
-            .clickable { onClick() }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
     ) {
         Box {
-            FlikataAvatar(
-                name = user.name,
-                avatarUrl = user.avatar,
-                size = 54.dp
-            )
-
-            // Green Online Active Dot
+            // 3D Circular Avatar Container
             Box(
                 modifier = Modifier
-                    .size(15.dp)
+                    .size(54.dp)
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = CircleShape,
+                        ambientColor = SoftUITheme.ShadowDark
+                    )
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(
+                        width = 1.5.dp,
+                        brush = Brush.linearGradient(
+                            listOf(Color.White, Color(0x660075FF))
+                        ),
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                FlikataAvatar(
+                    name = user.name,
+                    avatarUrl = user.avatar,
+                    size = 50.dp
+                )
+            }
+
+            // Green Online Dot
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
                     .clip(CircleShape)
                     .background(Color(0xFF45BD62))
-                    .border(2.dp, MaterialTheme.colorScheme.background, CircleShape)
+                    .border(2.dp, Color.White, CircleShape)
                     .align(Alignment.BottomEnd)
             )
         }
@@ -331,133 +468,191 @@ private fun ActiveUserItem(
 
         Text(
             text = user.name.split(" ").firstOrNull() ?: user.name,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 11.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = SoftUITheme.TextDark,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
     }
 }
 
+/**
+ * 3D Soft Neumorphic Conversation Row Card
+ */
 @Composable
-private fun ChatItemRow(
+private fun Chat3DItemRow(
     chat: ChatMessage,
     onClick: () -> Unit
 ) {
-    Row(
+    val isDark = SoftUITheme.isDark
+    val rowBg = if (isDark) {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFF242730), Color(0xFF1E2128)),
+            start = Offset(0f, 0f),
+            end = Offset(250f, 250f)
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(Color(0xFFFFFFFF), Color(0xFFF3F7FD)),
+            start = Offset(0f, 0f),
+            end = Offset(250f, 250f)
+        )
+    }
+
+    val rowBorder = if (isDark) {
+        Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x11FFFFFF)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xEEFFFFFF), Color(0x33A0C0E8)))
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
-            .padding(horizontal = 16.dp, vertical = 11.dp)
+            .shadow(
+                elevation = if (isDark) 2.dp else 2.dp,
+                shape = RoundedCornerShape(18.dp),
+                ambientColor = SoftUITheme.ShadowDark,
+                spotColor = SoftUITheme.ShadowDark
+            )
+            .clip(RoundedCornerShape(18.dp))
+            .background(rowBg)
+            .border(
+                width = 1.dp,
+                brush = rowBorder,
+                shape = RoundedCornerShape(18.dp)
+            )
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp)
             .testTag("chat_item_${chat.id}"),
-        verticalAlignment = Alignment.CenterVertically
+        contentAlignment = Alignment.CenterStart
     ) {
-        Box {
-            FlikataAvatar(
-                name = chat.senderName,
-                avatarUrl = chat.senderAvatar,
-                size = 52.dp
-            )
-            // Green indicator for active contacts
-            Box(
-                modifier = Modifier
-                    .size(13.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFF45BD62))
-                    .border(1.5.dp, MaterialTheme.colorScheme.background, CircleShape)
-                    .align(Alignment.BottomEnd)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f, fill = false)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Partner Avatar with 3D Ring
+            Box {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .shadow(2.dp, CircleShape, ambientColor = SoftUITheme.ShadowDark)
+                        .clip(CircleShape)
+                        .background(if (isDark) Color(0xFF1E2128) else Color.White)
+                        .border(1.5.dp, if (isDark) Color(0x33FFFFFF) else Color(0x99FFFFFF), CircleShape),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = chat.senderName,
-                        fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    FlikataAvatar(
+                        name = chat.senderName,
+                        avatarUrl = chat.senderAvatar,
+                        size = 50.dp
                     )
-                    if (chat.isVerified) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        VerifiedBadge(size = 14.dp)
-                    }
                 }
 
-                Text(
-                    text = chat.timestamp,
-                    fontSize = 12.sp,
-                    color = if (chat.unreadCount > 0) FlikataPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                // Active dot
+                Box(
+                    modifier = Modifier
+                        .size(13.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF45BD62))
+                        .border(1.5.dp, Color.White, CircleShape)
+                        .align(Alignment.BottomEnd)
                 )
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.width(13.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (chat.isVoiceMessage) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Voice Message",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .size(15.dp)
-                            .padding(end = 4.dp)
-                    )
-                } else if (chat.isMissedCall) {
-                    Icon(
-                        imageVector = Icons.Default.PhoneCallback,
-                        contentDescription = "Missed Call",
-                        tint = Color(0xFFFA383E),
-                        modifier = Modifier
-                            .size(15.dp)
-                            .padding(end = 4.dp)
+            Column(modifier = Modifier.weight(1f)) {
+                // Name & Timestamp Row
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Text(
+                            text = chat.senderName,
+                            fontWeight = if (chat.unreadCount > 0) FontWeight.ExtraBold else FontWeight.Bold,
+                            fontSize = 15.5.sp,
+                            color = SoftUITheme.TextDark,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (chat.isVerified) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerifiedBadge(size = 14.dp)
+                        }
+                    }
+
+                    Text(
+                        text = chat.timestamp,
+                        fontSize = 11.5.sp,
+                        fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                        color = if (chat.unreadCount > 0) Color(0xFF0075FF) else SoftUITheme.TextMuted
                     )
                 }
 
-                Text(
-                    text = chat.message,
-                    fontSize = 14.sp,
-                    color = if (chat.unreadCount > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (chat.unreadCount > 0) FontWeight.SemiBold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                Spacer(modifier = Modifier.height(4.dp))
 
-                if (chat.unreadCount > 0) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clip(CircleShape)
-                            .background(FlikataPrimary),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${chat.unreadCount}",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
+                // Last Message Preview & Unread Badge
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (chat.isVoiceMessage) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "Voice Message",
+                            tint = Color(0xFF0075FF),
+                            modifier = Modifier
+                                .size(15.dp)
+                                .padding(end = 4.dp)
                         )
+                    } else if (chat.isMissedCall) {
+                        Icon(
+                            imageVector = Icons.Default.PhoneCallback,
+                            contentDescription = "Missed Call",
+                            tint = FlikataError,
+                            modifier = Modifier
+                                .size(15.dp)
+                                .padding(end = 4.dp)
+                        )
+                    }
+
+                    Text(
+                        text = chat.message,
+                        fontSize = 13.5.sp,
+                        color = if (chat.unreadCount > 0) SoftUITheme.TextDark else SoftUITheme.TextSecondary,
+                        fontWeight = if (chat.unreadCount > 0) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (chat.unreadCount > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(19.dp)
+                                .shadow(2.dp, CircleShape, ambientColor = Color(0x660075FF))
+                                .clip(CircleShape)
+                                .background(Color(0xFF0075FF)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "${chat.unreadCount}",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
-
-private fun getActiveUsersList(): List<ActiveUser> {
-    return emptyList()
 }

@@ -32,8 +32,29 @@ object ApiClient {
         }
     )
 
+    @Volatile
+    var currentAuthToken: String? = null
+
+    @Volatile
+    var currentUserId: String? = null
+
+    private val authHeaderInterceptor = okhttp3.Interceptor { chain ->
+        val original = chain.request()
+        val builder = original.newBuilder()
+        val token = currentAuthToken
+        if (!token.isNullOrBlank()) {
+            builder.header("Authorization", "Bearer $token")
+        }
+        val uid = currentUserId
+        if (!uid.isNullOrBlank()) {
+            builder.header("X-Sender-Id", uid)
+        }
+        chain.proceed(builder.build())
+    }
+
     private val okHttpClient: OkHttpClient by lazy {
         val builder = OkHttpClient.Builder()
+            .addInterceptor(authHeaderInterceptor)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

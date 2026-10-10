@@ -19,6 +19,7 @@ data class UserEntity(
     val followingCount: Int,
     val postsCount: Int,
     val joinedDate: String,
+    val authToken: String? = null,
     val isLoggedIn: Boolean = true
 )
 
@@ -48,6 +49,7 @@ data class PostEntity(
 data class ChatEntity(
     @PrimaryKey val id: String,
     val threadId: String,
+    val senderId: String = "",
     val senderName: String,
     val senderAvatar: String,
     val isVerified: Boolean,

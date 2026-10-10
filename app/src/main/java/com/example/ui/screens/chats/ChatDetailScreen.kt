@@ -1,34 +1,37 @@
 package com.example.ui.screens.chats
 
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -50,17 +53,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +73,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -85,22 +84,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
 import com.example.ui.components.FlikataAvatar
-import com.example.ui.components.FlikataVideoPlayer
+import com.example.ui.components.SoftUITheme
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.FlikataError
 import com.example.ui.theme.FlikataPrimary
@@ -111,19 +112,17 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToInt
 
 data class QuotedMessage(
     val id: String,
     val senderName: String,
-    val text: String,
-    val mediaType: String? = null
+    val text: String
 )
 
 data class DetailMessage(
     val id: String = UUID.randomUUID().toString(),
     val text: String = "",
-    val imageUrl: String? = null,
-    val videoUrl: String? = null,
     val isMe: Boolean = true,
     val time: String = "Just now",
     val replyTo: QuotedMessage? = null,
@@ -131,16 +130,28 @@ data class DetailMessage(
     val isCallNotice: Boolean = false
 )
 
+/**
+ * 3D Neumorphic Chat Detail Screen with text-only messaging, verified profile avatars,
+ * and high-fidelity audio calling
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatDetailScreen(
     viewModel: MainViewModel,
     onBack: () -> Unit
 ) {
+    val currentUser by viewModel.currentUser.collectAsState()
     val chat by viewModel.selectedChat.collectAsState()
+
+    val rawPartnerId = (chat?.senderId?.takeIf { it.isNotBlank() && it != "partner" } ?: chat?.id)
+        ?.removePrefix("user_")?.removePrefix("partner_")?.trim() ?: "1"
+    val partnerId = rawPartnerId
     val partnerName = chat?.senderName ?: "Chat Partner"
     val partnerAvatar = chat?.senderAvatar ?: ""
     val isVerified = chat?.isVerified ?: false
+
+    val myName = currentUser?.fullName ?: "You"
+    val myAvatar = currentUser?.profilePic ?: ""
 
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -157,153 +168,166 @@ fun ChatDetailScreen(
 
     // Audio call state
     var isAudioCallActive by remember { mutableStateOf(false) }
+    val isDark = SoftUITheme.isDark
 
-    // Video player dialog state
-    var playingVideoUrl by remember { mutableStateOf<String?>(null) }
+    // Live conversation messages sync from real database
+    val messages = remember(partnerId) { mutableStateListOf<DetailMessage>() }
 
-    // Initial messages with rich content
-    val messages = remember(chat?.id) {
-        mutableStateListOf(
-            DetailMessage(
-                id = "m1",
-                text = "Hello! How are you doing today?",
-                isMe = false,
-                time = "10:15 AM"
-            ),
-            DetailMessage(
-                id = "m2",
-                text = "Hi! I am doing well, thank you! How about you?",
-                isMe = true,
-                time = "10:16 AM"
-            ),
-            DetailMessage(
-                id = "m3",
-                text = "The new features on Flikata look fantastic!",
-                isMe = false,
-                time = "10:18 AM"
-            )
-        )
-    }
-
-    // Media Pickers
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+    LaunchedEffect(partnerId) {
+        val initialMsg = chat?.message?.takeIf { it.isNotBlank() && it != "Active now" }
+        if (messages.isEmpty() && initialMsg != null) {
             messages.add(
                 DetailMessage(
-                    id = UUID.randomUUID().toString(),
-                    text = inputText.trim(),
-                    imageUrl = uri.toString(),
-                    isMe = true,
-                    time = currentTime,
-                    replyTo = replyingTo?.let {
-                        QuotedMessage(
-                            id = it.id,
-                            senderName = if (it.isMe) "You" else partnerName,
-                            text = if (it.text.isNotBlank()) it.text else if (it.imageUrl != null) "Photo" else "Video",
-                            mediaType = if (it.imageUrl != null) "image" else if (it.videoUrl != null) "video" else null
-                        )
-                    }
+                    id = "initial_${chat?.id}",
+                    text = initialMsg,
+                    isMe = false,
+                    time = chat?.timestamp ?: "Just now"
                 )
             )
-            inputText = ""
-            replyingTo = null
-            coroutineScope.launch {
-                listState.animateScrollToItem(messages.size - 1)
-            }
         }
-    }
-
-    val videoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-            messages.add(
-                DetailMessage(
-                    id = UUID.randomUUID().toString(),
-                    text = inputText.trim(),
-                    videoUrl = uri.toString(),
-                    isMe = true,
-                    time = currentTime,
-                    replyTo = replyingTo?.let {
-                        QuotedMessage(
-                            id = it.id,
-                            senderName = if (it.isMe) "You" else partnerName,
-                            text = if (it.text.isNotBlank()) it.text else if (it.imageUrl != null) "Photo" else "Video",
-                            mediaType = if (it.imageUrl != null) "image" else if (it.videoUrl != null) "video" else null
+        // Poll for new messages every 3 seconds while in conversation
+        while (true) {
+            val res = viewModel.repository.fetchConversationMessages(partnerId)
+            if (res.isSuccess) {
+                val serverMsgs = res.getOrNull() ?: emptyList()
+                if (serverMsgs.isNotEmpty()) {
+                    val converted = serverMsgs.filter { it.text.isNotBlank() }.map { sMsg ->
+                        DetailMessage(
+                            id = sMsg.id,
+                            text = sMsg.text,
+                            isMe = sMsg.isMe,
+                            time = sMsg.time,
+                            isEdited = sMsg.isEdited,
+                            isCallNotice = sMsg.isCallNotice
                         )
                     }
-                )
-            )
-            inputText = ""
-            replyingTo = null
-            coroutineScope.launch {
-                listState.animateScrollToItem(messages.size - 1)
+                    if (converted.isNotEmpty()) {
+                        messages.clear()
+                        messages.addAll(converted)
+                    }
+                }
             }
+            delay(3000)
         }
     }
-
-    val screenBg = MaterialTheme.colorScheme.background
-    val screenSurface = MaterialTheme.colorScheme.surface
-    val textPrimary = MaterialTheme.colorScheme.onSurface
-    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
 
     Scaffold(
         topBar = {
-            Surface(
-                color = screenSurface,
-                tonalElevation = 2.dp,
-                shadowElevation = 1.dp
+            // 3D Neumorphic Top Bar
+            val isDark = SoftUITheme.isDark
+            val chatHeaderBg = if (isDark) {
+                Brush.verticalGradient(listOf(Color(0xFF242730), Color(0xFF1E2128), Color(0xFF16181E)))
+            } else {
+                Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF4F8FD), Color(0xFFE9F2FC)))
+            }
+            val chatHeaderBorder = if (isDark) {
+                Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x11FFFFFF)))
+            } else {
+                Brush.verticalGradient(listOf(Color(0xEEFFFFFF), Color(0x33A0C0E8)))
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = if (isDark) 2.dp else 1.dp,
+                        shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+                        ambientColor = if (isDark) Color(0x33000000) else Color(0x0A000000),
+                        spotColor = if (isDark) Color(0x44000000) else Color(0x0C000000)
+                    )
+                    .clip(RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp))
+                    .background(chatHeaderBg)
+                    .border(
+                        width = 1.dp,
+                        brush = chatHeaderBorder,
+                        shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+                    )
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                        .padding(horizontal = 8.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Left Partner Profile info
+                    // Left: Back button & Partner Profile
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier.weight(1f)
                     ) {
-                        IconButton(onClick = onBack) {
+                        // 3D Circular Back Button
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .shadow(
+                                    elevation = 2.dp,
+                                    shape = CircleShape,
+                                    ambientColor = SoftUITheme.ShadowDark,
+                                    spotColor = SoftUITheme.ShadowDark
+                                )
+                                .clip(CircleShape)
+                                .background(
+                                    if (isDark) Brush.linearGradient(listOf(Color(0xFF2C303B), Color(0xFF20232B)))
+                                    else Brush.linearGradient(listOf(Color.White, Color(0xFFE8F1FC)))
+                                )
+                                .border(1.dp, if (isDark) Color(0x33FFFFFF) else Color(0xEEFFFFFF), CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null,
+                                    onClick = onBack
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",
-                                tint = textPrimary
+                                tint = if (isDark) Color(0xFFE4E6EB) else Color(0xFF1E3A5F),
+                                modifier = Modifier.size(19.dp)
                             )
                         }
 
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        // Partner Avatar with 3D Ring & Online Status Dot
                         Box {
-                            FlikataAvatar(
-                                name = partnerName,
-                                avatarUrl = partnerAvatar,
-                                size = 40.dp
-                            )
                             Box(
                                 modifier = Modifier
-                                    .size(11.dp)
+                                    .size(42.dp)
+                                    .shadow(3.dp, CircleShape, ambientColor = SoftUITheme.ShadowDark)
+                                    .clip(CircleShape)
+                                    .background(Color.White)
+                                    .border(1.5.dp, Color(0x99FFFFFF), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                FlikataAvatar(
+                                    name = partnerName,
+                                    avatarUrl = partnerAvatar,
+                                    size = 40.dp
+                                )
+                            }
+
+                            // Green Online Badge
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
                                     .clip(CircleShape)
                                     .background(Color(0xFF45BD62))
-                                    .border(1.5.dp, screenSurface, CircleShape)
+                                    .border(1.5.dp, Color.White, CircleShape)
                                     .align(Alignment.BottomEnd)
                             )
                         }
 
                         Spacer(modifier = Modifier.width(10.dp))
 
+                        // Partner Name & Status
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     text = partnerName,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = textPrimary,
+                                    fontSize = 15.5.sp,
+                                    color = SoftUITheme.TextDark,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -316,35 +340,86 @@ fun ChatDetailScreen(
                                 text = "Active now",
                                 fontSize = 11.sp,
                                 color = Color(0xFF45BD62),
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
 
-                    // Audio Call button ONLY (NO Video Call button as explicitly requested)
-                    IconButton(
-                        onClick = { isAudioCallActive = true },
+                    // Right: 3D Glossy Audio Call Button (Audio calling verified)
+                    Box(
                         modifier = Modifier
                             .size(40.dp)
+                            .shadow(
+                                elevation = 5.dp,
+                                shape = CircleShape,
+                                ambientColor = Color(0x660075FF),
+                                spotColor = Color(0x880052D4)
+                            )
                             .clip(CircleShape)
-                            .background(Color(0xFFE7F3FF))
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF0075FF),
+                                        Color(0xFF0052D4)
+                                    )
+                                )
+                            )
+                            .border(
+                                width = 1.2.dp,
+                                brush = Brush.verticalGradient(
+                                    listOf(Color(0xEEFFFFFF), Color(0x44FFFFFF))
+                                ),
+                                shape = CircleShape
+                            )
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = { isAudioCallActive = true }
+                            )
+                            .testTag("chat_audio_call_btn"),
+                        contentAlignment = Alignment.Center
                     ) {
+                        // Top specular gloss highlight arc
+                        Canvas(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .align(Alignment.TopCenter)
+                        ) {
+                            drawArc(
+                                brush = Brush.verticalGradient(
+                                    listOf(Color(0x66FFFFFF), Color.Transparent)
+                                ),
+                                startAngle = 180f,
+                                sweepAngle = 180f,
+                                useCenter = true,
+                                size = androidx.compose.ui.geometry.Size(size.width, size.height * 0.5f)
+                            )
+                        }
+
                         Icon(
                             imageVector = Icons.Default.Call,
                             contentDescription = "Audio Call",
-                            tint = FlikataPrimary,
-                            modifier = Modifier.size(20.dp)
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
             }
         },
-        containerColor = screenBg
+        containerColor = Color(0xFFF3F7FD)
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            SoftUITheme.BackgroundGradientTop,
+                            SoftUITheme.BackgroundGradientBottom
+                        )
+                    )
+                )
                 .imePadding()
         ) {
             // Messages List
@@ -353,24 +428,23 @@ fun ChatDetailScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 12.dp),
+                contentPadding = PaddingValues(vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(messages, key = { it.id }) { msg ->
-                    ChatBubbleItem(
-                        msg = msg,
-                        partnerName = partnerName,
-                        onLongClick = {
-                            selectedMessageForAction = msg
-                        },
-                        onImageClick = { url ->
-                            viewModel.openImageViewer(url)
-                        },
-                        onVideoClick = { url ->
-                            playingVideoUrl = url
-                        }
-                    )
+                    SwipeToReplyContainer(
+                        onReply = { replyingTo = msg }
+                    ) {
+                        ChatBubbleWithAvatars(
+                            msg = msg,
+                            partnerName = partnerName,
+                            partnerAvatar = partnerAvatar,
+                            myName = myName,
+                            myAvatar = myAvatar,
+                            onLongClick = { selectedMessageForAction = msg }
+                        )
+                    }
                 }
             }
 
@@ -381,15 +455,18 @@ fun ChatDetailScreen(
                 exit = slideOutVertically { it } + fadeOut()
             ) {
                 if (replyingTo != null) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        tonalElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .shadow(3.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White)
+                            .border(1.dp, Color(0x330075FF), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -400,21 +477,21 @@ fun ChatDetailScreen(
                                 Box(
                                     modifier = Modifier
                                         .width(3.dp)
-                                        .height(32.dp)
-                                        .background(FlikataPrimary, RoundedCornerShape(2.dp))
+                                        .height(30.dp)
+                                        .background(Color(0xFF0075FF), RoundedCornerShape(2.dp))
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(
                                         text = "Replying to ${if (replyingTo!!.isMe) "yourself" else partnerName}",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = FlikataPrimary
+                                        color = Color(0xFF0075FF)
                                     )
                                     Text(
-                                        text = if (replyingTo!!.text.isNotBlank()) replyingTo!!.text else if (replyingTo!!.imageUrl != null) "Photo" else "Video",
+                                        text = replyingTo!!.text,
                                         fontSize = 12.sp,
-                                        color = textSecondary,
+                                        color = SoftUITheme.TextSecondary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -428,7 +505,7 @@ fun ChatDetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Cancel Reply",
-                                    tint = textSecondary,
+                                    tint = SoftUITheme.TextSecondary,
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -444,15 +521,18 @@ fun ChatDetailScreen(
                 exit = slideOutVertically { it } + fadeOut()
             ) {
                 if (editingMessage != null) {
-                    Surface(
-                        color = Color(0xFFFFF3CD),
-                        tonalElevation = 2.dp,
-                        modifier = Modifier.fillMaxWidth()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .shadow(3.dp, RoundedCornerShape(14.dp))
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFFFFF9E6))
+                            .border(1.dp, Color(0xFFF59E0B), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -463,21 +543,21 @@ fun ChatDetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Edit,
                                     contentDescription = "Edit",
-                                    tint = Color(0xFF856404),
+                                    tint = Color(0xFFD97706),
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(
                                         text = "Editing message",
-                                        fontSize = 12.sp,
+                                        fontSize = 11.5.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF856404)
+                                        color = Color(0xFFD97706)
                                     )
                                     Text(
                                         text = editingMessage!!.text,
                                         fontSize = 12.sp,
-                                        color = Color(0xFF856404).copy(alpha = 0.8f),
+                                        color = Color(0xFF92400E),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -494,7 +574,7 @@ fun ChatDetailScreen(
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Cancel Edit",
-                                    tint = Color(0xFF856404),
+                                    tint = Color(0xFFD97706),
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
@@ -503,61 +583,69 @@ fun ChatDetailScreen(
                 }
             }
 
-            // Bottom Input Bar
-            Surface(
-                color = screenSurface,
-                tonalElevation = 4.dp,
-                shadowElevation = 3.dp,
-                modifier = Modifier.fillMaxWidth()
+            // 3D Neumorphic Text-Only Input Bar (NO Image/Video sending as strictly instructed)
+            val inputBarBg = if (isDark) {
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF242730),
+                        Color(0xFF1E2128),
+                        Color(0xFF16181E)
+                    )
+                )
+            } else {
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFFFFFFF),
+                        Color(0xFFF4F8FD),
+                        Color(0xFFE8F1FC)
+                    )
+                )
+            }
+            val inputPillBg = if (isDark) Color(0xFF1E2128) else Color(0xFFF3F7FD)
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = if (isDark) 4.dp else 4.dp,
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+                        ambientColor = SoftUITheme.ShadowDark,
+                        spotColor = SoftUITheme.ShadowDark
+                    )
+                    .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                    .background(inputBarBg)
+                    .border(
+                        width = 1.dp,
+                        brush = if (isDark) Brush.verticalGradient(listOf(Color(0x33FFFFFF), Color(0x11FFFFFF)))
+                        else Brush.verticalGradient(listOf(Color(0xEEFFFFFF), Color(0x33A0C0E8))),
+                        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                    )
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .padding(horizontal = 10.dp, vertical = 9.dp)
                         .navigationBarsPadding(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Photo Attachment Button
-                    IconButton(
-                        onClick = {
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                            )
-                        },
-                        modifier = Modifier.size(38.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Image,
-                            contentDescription = "Send Image",
-                            tint = FlikataPrimary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    // Video Attachment Button
-                    IconButton(
-                        onClick = {
-                            videoPickerLauncher.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                            )
-                        },
-                        modifier = Modifier.size(38.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = "Send Video",
-                            tint = Color(0xFF45BD62),
-                            modifier = Modifier.size(23.dp)
-                        )
-                    }
-
-                    // Text Input Pill Box
+                    // Soft 3D Recessed Text Input Pill
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .height(42.dp)
-                            .clip(RoundedCornerShape(21.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+                            .height(44.dp)
+                            .shadow(
+                                elevation = 1.dp,
+                                shape = RoundedCornerShape(22.dp),
+                                ambientColor = SoftUITheme.ShadowDark
+                            )
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(inputPillBg)
+                            .border(
+                                width = 1.dp,
+                                brush = if (isDark) Brush.verticalGradient(listOf(Color(0x22FFFFFF), Color(0x08FFFFFF)))
+                                else Brush.verticalGradient(listOf(Color(0x66A0C0E8), Color(0xEEFFFFFF))),
+                                shape = RoundedCornerShape(22.dp)
+                            )
                             .padding(horizontal = 14.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -568,15 +656,17 @@ fun ChatDetailScreen(
                                 .fillMaxWidth()
                                 .testTag("chat_input_field"),
                             textStyle = TextStyle(
-                                color = textPrimary,
-                                fontSize = 14.sp
+                                color = SoftUITheme.TextDark,
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Medium
                             ),
+                            cursorBrush = SolidColor(Color(0xFF0075FF)),
                             maxLines = 4,
                             decorationBox = { innerTextField ->
                                 if (inputText.isEmpty()) {
                                     Text(
-                                        text = if (editingMessage != null) "Edit message..." else "Type a message...",
-                                        color = textSecondary.copy(alpha = 0.7f),
+                                        text = if (editingMessage != null) "Edit message..." else "Type text message...",
+                                        color = SoftUITheme.TextMuted,
                                         fontSize = 14.sp
                                     )
                                 }
@@ -587,26 +677,30 @@ fun ChatDetailScreen(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    // Send or Edit Save Button
+                    // 3D Send / Quick Thumbs Up Button
                     if (editingMessage != null) {
-                        IconButton(
-                            onClick = {
-                                if (inputText.isNotBlank()) {
-                                    val idx = messages.indexOfFirst { it.id == editingMessage!!.id }
-                                    if (idx != -1) {
-                                        messages[idx] = messages[idx].copy(
-                                            text = inputText.trim(),
-                                            isEdited = true
-                                        )
-                                    }
-                                    editingMessage = null
-                                    inputText = ""
-                                }
-                            },
+                        // Save edit button
+                        Box(
                             modifier = Modifier
-                                .size(40.dp)
+                                .size(42.dp)
+                                .shadow(4.dp, CircleShape, ambientColor = Color(0x6645BD62))
                                 .clip(CircleShape)
                                 .background(Color(0xFF45BD62))
+                                .border(1.2.dp, Color(0x88FFFFFF), CircleShape)
+                                .clickable {
+                                    if (inputText.isNotBlank()) {
+                                        val idx = messages.indexOfFirst { it.id == editingMessage!!.id }
+                                        if (idx != -1) {
+                                            messages[idx] = messages[idx].copy(
+                                                text = inputText.trim(),
+                                                isEdited = true
+                                            )
+                                        }
+                                        editingMessage = null
+                                        inputText = ""
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Check,
@@ -616,68 +710,115 @@ fun ChatDetailScreen(
                             )
                         }
                     } else if (inputText.isNotBlank()) {
-                        IconButton(
-                            onClick = {
-                                val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-                                messages.add(
-                                    DetailMessage(
-                                        id = UUID.randomUUID().toString(),
-                                        text = inputText.trim(),
-                                        isMe = true,
-                                        time = currentTime,
-                                        replyTo = replyingTo?.let {
-                                            QuotedMessage(
-                                                id = it.id,
-                                                senderName = if (it.isMe) "You" else partnerName,
-                                                text = if (it.text.isNotBlank()) it.text else if (it.imageUrl != null) "Photo" else "Video",
-                                                mediaType = if (it.imageUrl != null) "image" else if (it.videoUrl != null) "video" else null
-                                            )
-                                        }
+                        // Send Text Button
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .shadow(
+                                    elevation = 6.dp,
+                                    shape = CircleShape,
+                                    ambientColor = Color(0x660075FF),
+                                    spotColor = Color(0xAA0052D4)
+                                )
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xFF0075FF), Color(0xFF0052D4))
                                     )
                                 )
-                                inputText = ""
-                                replyingTo = null
-                                coroutineScope.launch {
-                                    listState.animateScrollToItem(messages.size - 1)
-                                }
-                            },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(FlikataPrimary)
-                                .testTag("chat_send_button")
+                                .border(
+                                    1.5.dp,
+                                    Brush.verticalGradient(
+                                        listOf(Color(0xEEFFFFFF), Color(0x33FFFFFF))
+                                    ),
+                                    CircleShape
+                                )
+                                .clickable {
+                                    val textToSend = inputText.trim()
+                                    val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+                                    messages.add(
+                                        DetailMessage(
+                                            id = UUID.randomUUID().toString(),
+                                            text = textToSend,
+                                            isMe = true,
+                                            time = currentTime,
+                                            replyTo = replyingTo?.let {
+                                                QuotedMessage(
+                                                    id = it.id,
+                                                    senderName = if (it.isMe) "You" else partnerName,
+                                                    text = it.text
+                                                )
+                                            }
+                                        )
+                                    )
+                                    inputText = ""
+                                    replyingTo = null
+
+                                    // Persist message & trigger server sync
+                                    viewModel.sendMessage(
+                                        partnerId = partnerId,
+                                        partnerName = partnerName,
+                                        partnerAvatar = partnerAvatar,
+                                        messageText = textToSend
+                                    )
+
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(messages.size - 1)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Send",
+                                contentDescription = "Send Message",
                                 tint = Color.White,
                                 modifier = Modifier.size(19.dp)
                             )
                         }
                     } else {
-                        // Quick Like/Thumb button when text is empty (standard Messenger)
-                        IconButton(
-                            onClick = {
-                                val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-                                messages.add(
-                                    DetailMessage(
-                                        id = UUID.randomUUID().toString(),
-                                        text = "👍",
-                                        isMe = true,
-                                        time = currentTime
+                        // Quick Like Thumbs Up Button
+                        Box(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .shadow(
+                                    elevation = 4.dp,
+                                    shape = CircleShape,
+                                    ambientColor = SoftUITheme.ShadowDark
+                                )
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(
+                                        listOf(Color.White, Color(0xFFE8F1FC))
                                     )
                                 )
-                                coroutineScope.launch {
-                                    listState.animateScrollToItem(messages.size - 1)
-                                }
-                            },
-                            modifier = Modifier.size(40.dp)
+                                .border(1.dp, Color(0xEEFFFFFF), CircleShape)
+                                .clickable {
+                                    val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+                                    messages.add(
+                                        DetailMessage(
+                                            id = UUID.randomUUID().toString(),
+                                            text = "👍",
+                                            isMe = true,
+                                            time = currentTime
+                                        )
+                                    )
+                                    viewModel.sendMessage(
+                                        partnerId = partnerId,
+                                        partnerName = partnerName,
+                                        partnerAvatar = partnerAvatar,
+                                        messageText = "👍"
+                                    )
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(messages.size - 1)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ThumbUp,
-                                contentDescription = "Like",
-                                tint = FlikataPrimary,
-                                modifier = Modifier.size(22.dp)
+                                contentDescription = "Send Like",
+                                tint = Color(0xFF0075FF),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -692,8 +833,8 @@ fun ChatDetailScreen(
         ModalBottomSheet(
             onDismissRequest = { selectedMessageForAction = null },
             sheetState = actionSheetState,
-            containerColor = screenSurface,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            containerColor = Color(0xFFF7FAFE),
+            shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
         ) {
             Column(
                 modifier = Modifier
@@ -705,11 +846,11 @@ fun ChatDetailScreen(
                     text = "Message Actions",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
-                    color = textPrimary,
+                    color = SoftUITheme.TextDark,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                // Reply Action (Applicable to anyone's message)
+                // Reply Action
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -724,10 +865,10 @@ fun ChatDetailScreen(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = "Reply",
-                        tint = FlikataPrimary
+                        tint = Color(0xFF0075FF)
                     )
                     Spacer(modifier = Modifier.width(14.dp))
-                    Text(text = "Reply", fontSize = 15.sp, color = textPrimary, fontWeight = FontWeight.Medium)
+                    Text(text = "Reply", fontSize = 15.sp, color = SoftUITheme.TextDark, fontWeight = FontWeight.Medium)
                 }
 
                 // Copy Action
@@ -741,20 +882,20 @@ fun ChatDetailScreen(
                                 selectedMessageForAction = null
                             }
                             .padding(vertical = 12.dp, horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = "Copy",
-                            tint = textPrimary
+                            tint = SoftUITheme.IconTint
                         )
                         Spacer(modifier = Modifier.width(14.dp))
-                        Text(text = "Copy Text", fontSize = 15.sp, color = textPrimary, fontWeight = FontWeight.Medium)
+                        Text(text = "Copy text", fontSize = 15.sp, color = SoftUITheme.TextDark, fontWeight = FontWeight.Medium)
                     }
                 }
 
-                // Edit Action (Only for user's own sent text messages)
-                if (targetMsg.isMe && targetMsg.text.isNotBlank()) {
+                // Edit Action (Only for own messages)
+                if (targetMsg.isMe) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -770,14 +911,14 @@ fun ChatDetailScreen(
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Edit",
-                            tint = Color(0xFFF2994A)
+                            tint = Color(0xFF0075FF)
                         )
                         Spacer(modifier = Modifier.width(14.dp))
-                        Text(text = "Edit Message", fontSize = 15.sp, color = textPrimary, fontWeight = FontWeight.Medium)
+                        Text(text = "Edit message", fontSize = 15.sp, color = SoftUITheme.TextDark, fontWeight = FontWeight.Medium)
                     }
                 }
 
-                // Delete / Remove Action
+                // Delete Action
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -800,7 +941,7 @@ fun ChatDetailScreen(
                         tint = FlikataError
                     )
                     Spacer(modifier = Modifier.width(14.dp))
-                    Text(text = "Delete / Remove Message", fontSize = 15.sp, color = FlikataError, fontWeight = FontWeight.Medium)
+                    Text(text = "Delete message", fontSize = 15.sp, color = FlikataError, fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -826,54 +967,20 @@ fun ChatDetailScreen(
             }
         )
     }
-
-    // Video Player Dialog
-    if (playingVideoUrl != null) {
-        Dialog(
-            onDismissRequest = { playingVideoUrl = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                FlikataVideoPlayer(
-                    videoUri = playingVideoUrl!!,
-                    modifier = Modifier.fillMaxSize(),
-                    autoPlay = true,
-                    repeat = true
-                )
-
-                IconButton(
-                    onClick = { playingVideoUrl = null },
-                    modifier = Modifier
-                        .statusBarsPadding()
-                        .padding(16.dp)
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.6f))
-                        .align(Alignment.TopEnd)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Close",
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-    }
 }
 
+/**
+ * Chat bubble with verified profile avatars on both sender and receiver sides
+ */
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ChatBubbleItem(
+private fun ChatBubbleWithAvatars(
     msg: DetailMessage,
     partnerName: String,
-    onLongClick: () -> Unit,
-    onImageClick: (String) -> Unit,
-    onVideoClick: (String) -> Unit
+    partnerAvatar: String,
+    myName: String,
+    myAvatar: String,
+    onLongClick: () -> Unit
 ) {
     if (msg.isCallNotice) {
         Box(
@@ -882,62 +989,141 @@ private fun ChatBubbleItem(
                 .padding(vertical = 4.dp),
             contentAlignment = Alignment.Center
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                shape = RoundedCornerShape(12.dp)
+            Box(
+                modifier = Modifier
+                    .shadow(2.dp, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
+                    .border(1.dp, Color(0x33A0C0E8), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
             ) {
                 Text(
                     text = msg.text,
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    color = SoftUITheme.TextSecondary,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
         return
     }
 
-    val bubbleColor = if (msg.isMe) FlikataPrimary else MaterialTheme.colorScheme.surfaceVariant
-    val textColor = if (msg.isMe) Color.White else MaterialTheme.colorScheme.onSurface
-
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (msg.isMe) Alignment.End else Alignment.Start
+        horizontalArrangement = if (msg.isMe) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
-        Surface(
-            color = bubbleColor,
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (msg.isMe) 16.dp else 4.dp,
-                bottomEnd = if (msg.isMe) 4.dp else 16.dp
-            ),
+        // Partner Avatar on incoming message (Left side)
+        if (!msg.isMe) {
+            Box(
+                modifier = Modifier
+                    .padding(end = 6.dp, bottom = 2.dp)
+                    .size(30.dp)
+                    .shadow(2.dp, CircleShape, ambientColor = SoftUITheme.ShadowDark)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, Color(0x99FFFFFF), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                FlikataAvatar(
+                    name = partnerName,
+                    avatarUrl = partnerAvatar,
+                    size = 28.dp
+                )
+            }
+        }
+
+        // 3D Neumorphic Message Bubble Container
+        Box(
             modifier = Modifier
-                .widthIn(max = 290.dp)
+                .widthIn(max = 280.dp)
+                .shadow(
+                    elevation = if (msg.isMe) 5.dp else 3.dp,
+                    shape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = if (msg.isMe) 18.dp else 4.dp,
+                        bottomEnd = if (msg.isMe) 4.dp else 18.dp
+                    ),
+                    ambientColor = if (msg.isMe) Color(0x440075FF) else SoftUITheme.ShadowDark,
+                    spotColor = if (msg.isMe) Color(0x660052D4) else SoftUITheme.ShadowDark
+                )
+                .clip(
+                    RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = if (msg.isMe) 18.dp else 4.dp,
+                        bottomEnd = if (msg.isMe) 4.dp else 18.dp
+                    )
+                )
+                .background(
+                    if (msg.isMe) {
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color(0xFF0075FF),
+                                Color(0xFF0052D4)
+                            ),
+                            start = Offset(0f, 0f),
+                            end = Offset(200f, 200f)
+                        )
+                    } else {
+                        if (SoftUITheme.isDark) {
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFF282C36),
+                                    Color(0xFF20232A)
+                                ),
+                                start = Offset(0f, 0f),
+                                end = Offset(100f, 100f)
+                            )
+                        } else {
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFEFF5FD)
+                                ),
+                                start = Offset(0f, 0f),
+                                end = Offset(100f, 100f)
+                            )
+                        }
+                    }
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        if (msg.isMe) listOf(Color(0x88FFFFFF), Color(0x22FFFFFF))
+                        else if (SoftUITheme.isDark) listOf(Color(0x22FFFFFF), Color(0x11FFFFFF))
+                        else listOf(Color(0xEEFFFFFF), Color(0x44A0C0E8))
+                    ),
+                    shape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart = if (msg.isMe) 18.dp else 4.dp,
+                        bottomEnd = if (msg.isMe) 4.dp else 18.dp
+                    )
+                )
                 .combinedClickable(
-                    onClick = { /* normal click */ },
+                    onClick = { /* normal tap */ },
                     onLongClick = onLongClick
                 )
         ) {
-            Column(modifier = Modifier.padding(8.dp)) {
-                // Quoted / Replied message preview
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) {
+                // Quoted message inside bubble
                 if (msg.replyTo != null) {
-                    Surface(
-                        color = if (msg.isMe) Color.White.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
-                        shape = RoundedCornerShape(8.dp),
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 6.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (msg.isMe) Color.White.copy(alpha = 0.2f) else Color(0xFFE2EDFC))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
                                     .width(3.dp)
-                                    .height(26.dp)
-                                    .background(if (msg.isMe) Color.White else FlikataPrimary, CircleShape)
+                                    .height(24.dp)
+                                    .background(if (msg.isMe) Color.White else Color(0xFF0075FF), CircleShape)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Column {
@@ -945,12 +1131,12 @@ private fun ChatBubbleItem(
                                     text = msg.replyTo.senderName,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (msg.isMe) Color.White else FlikataPrimary
+                                    color = if (msg.isMe) Color.White else Color(0xFF0075FF)
                                 )
                                 Text(
                                     text = msg.replyTo.text,
                                     fontSize = 11.sp,
-                                    color = if (msg.isMe) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = if (msg.isMe) Color.White.copy(alpha = 0.9f) else SoftUITheme.TextSecondary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -959,127 +1145,156 @@ private fun ChatBubbleItem(
                     }
                 }
 
-                // Image content
-                if (msg.imageUrl != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1.2f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { onImageClick(msg.imageUrl) }
-                    ) {
-                        AsyncImage(
-                            model = msg.imageUrl,
-                            contentDescription = "Image message",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    if (msg.text.isNotBlank()) Spacer(modifier = Modifier.height(6.dp))
-                }
+                // Text Content
+                Text(
+                    text = msg.text,
+                    color = if (msg.isMe) Color.White else SoftUITheme.TextDark,
+                    fontSize = 15.sp,
+                    lineHeight = 20.sp
+                )
 
-                // Video content
-                if (msg.videoUrl != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1.3f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.Black)
-                            .clickable { onVideoClick(msg.videoUrl) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .clip(CircleShape)
-                                .background(Color.Black.copy(alpha = 0.6f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Play Video",
-                                tint = Color.White,
-                                modifier = Modifier.size(28.dp)
-                            )
-                        }
-
-                        Surface(
-                            color = Color.Black.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(4.dp),
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(6.dp)
-                        ) {
-                            Text(
-                                text = "Video",
-                                color = Color.White,
-                                fontSize = 10.sp,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
-                    if (msg.text.isNotBlank()) Spacer(modifier = Modifier.height(6.dp))
-                }
-
-                // Text content
-                if (msg.text.isNotBlank()) {
-                    Text(
-                        text = msg.text,
-                        color = textColor,
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
-
-                // Meta row: Time, Edited tag, checkmarks
+                // Time & checkmark row
                 Row(
                     modifier = Modifier
                         .align(Alignment.End)
-                        .padding(top = 2.dp, end = 2.dp),
+                        .padding(top = 3.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (msg.isEdited) {
                         Text(
                             text = "(edited) ",
                             fontSize = 10.sp,
-                            color = if (msg.isMe) Color.White.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            color = if (msg.isMe) Color.White.copy(alpha = 0.75f) else SoftUITheme.TextMuted
                         )
                     }
                     Text(
                         text = msg.time,
-                        fontSize = 10.sp,
-                        color = if (msg.isMe) Color.White.copy(alpha = 0.75f) else MaterialTheme.colorScheme.onSurfaceVariant
+                        fontSize = 10.5.sp,
+                        color = if (msg.isMe) Color.White.copy(alpha = 0.8f) else SoftUITheme.TextMuted
                     )
-                    if (msg.isMe) {
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Icon(
-                            imageVector = Icons.Default.DoneAll,
-                            contentDescription = "Delivered",
-                            tint = Color.White.copy(alpha = 0.8f),
-                            modifier = Modifier.size(13.dp)
-                        )
-                    }
                 }
+            }
+        }
+
+        // My Avatar on outgoing message (Right side)
+        if (msg.isMe) {
+            Box(
+                modifier = Modifier
+                    .padding(start = 6.dp, bottom = 2.dp)
+                    .size(30.dp)
+                    .shadow(2.dp, CircleShape, ambientColor = Color(0x440075FF))
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .border(1.dp, Color(0x99FFFFFF), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                FlikataAvatar(
+                    name = myName,
+                    avatarUrl = myAvatar,
+                    size = 28.dp
+                )
             }
         }
     }
 }
 
 @Composable
+private fun SwipeToReplyContainer(
+    onReply: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var isTriggered by remember { mutableStateOf(false) }
+    val animatedOffsetX by animateFloatAsState(
+        targetValue = offsetX,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "swipe_to_reply"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { isTriggered = false },
+                    onHorizontalDrag = { change, dragAmount ->
+                        if (dragAmount > 0 || offsetX > 0) {
+                            change.consume()
+                            val next = (offsetX + dragAmount).coerceIn(0f, 150f)
+                            offsetX = next
+                            if (next >= 85f && !isTriggered) {
+                                isTriggered = true
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        if (isTriggered || offsetX >= 85f) {
+                            onReply()
+                        }
+                        offsetX = 0f
+                        isTriggered = false
+                    },
+                    onDragCancel = {
+                        offsetX = 0f
+                        isTriggered = false
+                    }
+                )
+            }
+    ) {
+        if (animatedOffsetX > 8f) {
+            val progress = (animatedOffsetX / 85f).coerceIn(0f, 1f)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(start = 6.dp)
+                    .size(34.dp)
+                .graphicsLayer {
+                    scaleX = 0.6f + progress * 0.4f
+                    scaleY = 0.6f + progress * 0.4f
+                    alpha = progress
+                }
+                .clip(CircleShape)
+                .background(if (isTriggered || animatedOffsetX >= 85f) Color(0xFF0075FF) else Color(0xFFE2EDFC)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.Reply,
+                contentDescription = "Reply",
+                tint = if (isTriggered || animatedOffsetX >= 85f) Color.White else Color(0xFF0075FF),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .offset { IntOffset(animatedOffsetX.roundToInt(), 0) }
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * 3D Soft Neumorphic Audio Calling Screen with Pulsing Rings and Realistic Controls
+ */
+@Composable
 private fun AudioCallScreenOverlay(
     partnerName: String,
     partnerAvatar: String,
     onEndCall: (String) -> Unit
 ) {
-    var callSeconds by remember { mutableIntStateOf(0) }
     var isMuted by remember { mutableStateOf(false) }
     var isSpeakerOn by remember { mutableStateOf(false) }
+    var callSeconds by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         while (true) {
-            delay(1000)
+            delay(1000L)
             callSeconds++
         }
     }
@@ -1090,127 +1305,165 @@ private fun AudioCallScreenOverlay(
         String.format(Locale.getDefault(), "%02d:%02d", mins, secs)
     }
 
-    // Gentle pulse animation for caller avatar
-    val infiniteTransition = rememberInfiniteTransition(label = "callPulse")
+    // Outer pulsating wave animation
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.08f,
+        initialValue = 1.0f,
+        targetValue = 1.25f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1000),
+            animation = tween(1400),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "avatarPulse"
+        label = "pulseScale"
     )
 
-    Dialog(
-        onDismissRequest = { onEndCall(callDurationString) },
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF0F2027),
-                            Color(0xFF203A43),
-                            Color(0xFF2C5364)
-                        )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0B1B3D),
+                        Color(0xFF102855),
+                        Color(0xFF0A1628)
                     )
                 )
-                .statusBarsPadding()
-                .navigationBarsPadding()
+            )
+            .statusBarsPadding()
+            .navigationBarsPadding()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
+            // Top Section: Calling Avatar & Status
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.padding(top = 50.dp)
             ) {
-                // Top Header Info
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(top = 40.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        // Outer pulse ring
-                        Box(
-                            modifier = Modifier
-                                .size(136.dp)
-                                .scale(pulseScale)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.12f))
-                        )
+                Box(contentAlignment = Alignment.Center) {
+                    // Outer pulse ring
+                    Box(
+                        modifier = Modifier
+                            .size(150.dp)
+                            .scale(pulseScale)
+                            .clip(CircleShape)
+                            .background(Color(0x220075FF))
+                    )
+                    // Inner pulse ring
+                    Box(
+                        modifier = Modifier
+                            .size(130.dp)
+                            .clip(CircleShape)
+                            .background(Color(0x33FFFFFF))
+                    )
+                    // 3D Avatar Container
+                    Box(
+                        modifier = Modifier
+                            .size(110.dp)
+                            .shadow(10.dp, CircleShape, ambientColor = Color(0x660075FF))
+                            .clip(CircleShape)
+                            .border(3.dp, Color.White, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
                         FlikataAvatar(
                             name = partnerName,
                             avatarUrl = partnerAvatar,
                             size = 110.dp
                         )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
+                Text(
+                    text = partnerName,
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Calling Status Pill
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0x33FFFFFF))
+                        .padding(horizontal = 14.dp, vertical = 5.dp)
+                ) {
                     Text(
-                        text = partnerName,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = if (callSeconds < 3) "Connecting..." else callDurationString,
-                        fontSize = 15.sp,
-                        color = Color.White.copy(alpha = 0.8f),
+                        text = if (callSeconds < 3) "Connecting audio call..." else "In Call • $callDurationString",
+                        fontSize = 14.sp,
+                        color = Color.White,
                         fontWeight = FontWeight.Medium
                     )
                 }
+            }
 
-                // Bottom Call Controls
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.padding(bottom = 30.dp)
+            // Bottom Section: 3D Call Controls
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(bottom = 36.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Mute Mic Button
-                        CallActionButton(
-                            icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                            label = if (isMuted) "Unmute" else "Mute",
-                            isActive = isMuted,
-                            onClick = { isMuted = !isMuted }
-                        )
+                    // Mute Mic Button
+                    CallActionButton(
+                        icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                        label = if (isMuted) "Unmute" else "Mute",
+                        isActive = isMuted,
+                        onClick = { isMuted = !isMuted }
+                    )
 
-                        // End Call (Large Red button)
-                        Box(
-                            modifier = Modifier
-                                .size(70.dp)
-                                .clip(CircleShape)
-                                .background(FlikataError)
-                                .clickable { onEndCall(callDurationString) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.CallEnd,
-                                contentDescription = "End Call",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp)
+                    // End Call (Large 3D Red Glossy Button)
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .shadow(
+                                elevation = 12.dp,
+                                shape = CircleShape,
+                                ambientColor = Color(0x88FF3B30),
+                                spotColor = Color(0xCCFF3B30)
                             )
-                        }
-
-                        // Speaker Button
-                        CallActionButton(
-                            icon = if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
-                            label = if (isSpeakerOn) "Speaker" else "Earpiece",
-                            isActive = isSpeakerOn,
-                            onClick = { isSpeakerOn = !isSpeakerOn }
+                            .clip(CircleShape)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFFFF453A), Color(0xFFD32F2F))
+                                )
+                            )
+                            .border(
+                                2.dp,
+                                Brush.verticalGradient(
+                                    listOf(Color.White, Color(0x44FFFFFF))
+                                ),
+                                CircleShape
+                            )
+                            .clickable { onEndCall(callDurationString) }
+                            .testTag("end_audio_call_btn"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CallEnd,
+                            contentDescription = "End Call",
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
                         )
                     }
+
+                    // Speaker Button
+                    CallActionButton(
+                        icon = if (isSpeakerOn) Icons.Default.VolumeUp else Icons.Default.VolumeOff,
+                        label = if (isSpeakerOn) "Speaker" else "Earpiece",
+                        isActive = isSpeakerOn,
+                        onClick = { isSpeakerOn = !isSpeakerOn }
+                    )
                 }
             }
         }
@@ -1228,23 +1481,30 @@ private fun CallActionButton(
         Box(
             modifier = Modifier
                 .size(54.dp)
+                .shadow(
+                    elevation = 4.dp,
+                    shape = CircleShape,
+                    ambientColor = Color(0x44000000)
+                )
                 .clip(CircleShape)
-                .background(if (isActive) Color.White else Color.White.copy(alpha = 0.2f))
+                .background(if (isActive) Color.White else Color(0x33FFFFFF))
+                .border(1.2.dp, Color(0x66FFFFFF), CircleShape)
                 .clickable { onClick() },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = if (isActive) Color.Black else Color.White,
-                modifier = Modifier.size(24.dp)
+                tint = if (isActive) Color(0xFF0B1B3D) else Color.White,
+                modifier = Modifier.size(23.dp)
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(7.dp))
         Text(
             text = label,
             fontSize = 12.sp,
-            color = Color.White.copy(alpha = 0.8f)
+            color = Color.White.copy(alpha = 0.85f),
+            fontWeight = FontWeight.Medium
         )
     }
 }

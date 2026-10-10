@@ -36,12 +36,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import com.example.ui.components.SoftUITheme
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -72,17 +74,20 @@ fun HomeScreen(
     val unreadNotificationsCount by viewModel.unreadNotificationsCount.collectAsState()
     val uploadState by viewModel.postUploadState.collectAsState()
     val highlightedPostId by viewModel.highlightedPostId.collectAsState()
-    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val listState = viewModel.homeListState
 
-    LaunchedEffect(highlightedPostId, posts) {
-        if (!highlightedPostId.isNullOrBlank() && posts.isNotEmpty()) {
-            val target = highlightedPostId!!
+    LaunchedEffect(highlightedPostId) {
+        val target = highlightedPostId
+        if (!target.isNullOrBlank() && posts.isNotEmpty()) {
             val clean = target.removePrefix("post_")
             val index = posts.indexOfFirst { it.id == target || it.id == clean || it.id == "post_$clean" }
             if (index != -1) {
                 // Scroll to target shared post
                 val scrollIndex = if (uploadState.isUploading) index + 3 else index + 2
                 listState.animateScrollToItem(scrollIndex)
+                viewModel.clearHighlightedPost()
+            } else {
+                viewModel.clearHighlightedPost()
             }
         }
     }
@@ -96,7 +101,14 @@ fun HomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(bg)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    listOf(
+                        SoftUITheme.BackgroundGradientTop,
+                        SoftUITheme.BackgroundGradientBottom
+                    )
+                )
+            )
     ) {
         // Top Header
         FlikataHeader(
@@ -106,6 +118,19 @@ fun HomeScreen(
             onNotificationsClick = { viewModel.navigateTo(Screen.NOTIFICATIONS) },
             onMenuClick = onMenuClick
         )
+
+        val isDark = SoftUITheme.isDark
+        val cardBg = SoftUITheme.SurfaceCard
+        val composerPillBg = if (isDark) Color(0xFF1E2128) else Color(0xFFF3F7FD)
+        val cardBorderBrush = if (isDark) {
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(Color(0x33FFFFFF), Color(0x11FFFFFF))
+            )
+        } else {
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(Color(0xEEFFFFFF), Color(0x33A0C0E8))
+            )
+        }
 
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -118,19 +143,34 @@ fun HomeScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 60.dp)
+                    contentPadding = PaddingValues(bottom = 70.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // "What's on your mind?" Composer Card
-                    item {
-                        Surface(
-                            color = surfaceColor,
-                            modifier = Modifier.fillMaxWidth()
+                    // "What's on your mind?" 3D Neumorphic Composer Card
+                    item(key = "home_composer_header") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                                .shadow(
+                                    elevation = 2.dp,
+                                    shape = RoundedCornerShape(18.dp),
+                                    ambientColor = SoftUITheme.ShadowDark,
+                                    spotColor = SoftUITheme.ShadowDark
+                                )
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(cardBg)
+                                .border(
+                                    width = 1.dp,
+                                    brush = cardBorderBrush,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
                             ) {
                                 // User Profile Avatar with Initials Logo Fallback
                                 Box(modifier = Modifier.clickable { viewModel.openUserProfile(currentUser?.id ?: "") }) {
@@ -143,56 +183,83 @@ fun HomeScreen(
 
                                 Spacer(modifier = Modifier.width(10.dp))
 
-                                // Pill input box
+                                // 3D Recessed Pill input box
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(40.dp)
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                        .height(42.dp)
+                                        .clip(RoundedCornerShape(21.dp))
+                                        .background(composerPillBg)
+                                        .border(
+                                            1.dp,
+                                            if (isDark) androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x22FFFFFF), Color(0x08FFFFFF)))
+                                            else androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0x66A0C0E8), Color(0xEEFFFFFF))),
+                                            RoundedCornerShape(21.dp)
+                                        )
                                         .clickable { onCreatePostClick() }
                                         .padding(horizontal = 14.dp),
                                     contentAlignment = Alignment.CenterStart
                                 ) {
                                     Text(
                                         text = "What's on your mind?",
-                                        color = textSecondary,
-                                        fontSize = 15.sp
+                                        color = SoftUITheme.TextSecondary,
+                                        fontSize = 14.5.sp,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
 
                                 Spacer(modifier = Modifier.width(10.dp))
 
-                                // Green Photo Gallery Icon
-                                Icon(
-                                    imageVector = Icons.Default.PhotoLibrary,
-                                    contentDescription = "Gallery",
-                                    tint = Color(0xFF45BD62),
+                                // Green Photo Gallery Icon in 3D circle
+                                Box(
                                     modifier = Modifier
-                                        .size(26.dp)
-                                        .clickable { onCreatePostClick() }
-                                )
+                                        .size(38.dp)
+                                        .shadow(2.dp, CircleShape)
+                                        .clip(CircleShape)
+                                        .background(if (isDark) Color(0xFF1E2D22) else Color(0xFFE8F7EC))
+                                        .border(1.dp, Color(0x3345BD62), CircleShape)
+                                        .clickable { onCreatePostClick() },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoLibrary,
+                                        contentDescription = "Gallery",
+                                        tint = Color(0xFF45BD62),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(6.dp))
                     }
 
-                    // Stories Section
-                    item {
-                        Surface(
-                            color = surfaceColor,
-                            modifier = Modifier.fillMaxWidth()
+                    // 3D Neumorphic Stories Section
+                    item(key = "home_stories_row_header") {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 2.dp)
+                                .shadow(
+                                    elevation = 2.dp,
+                                    shape = RoundedCornerShape(18.dp),
+                                    ambientColor = SoftUITheme.ShadowDark,
+                                    spotColor = SoftUITheme.ShadowDark
+                                )
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(cardBg)
+                                .border(
+                                    width = 1.dp,
+                                    brush = cardBorderBrush,
+                                    shape = RoundedCornerShape(18.dp)
+                                )
                         ) {
                             LazyRow(
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 // 1. Always exactly one Create Story Card at the start
                                 item(key = "create_story_card_item") {
                                     CreateStoryCard(
                                         userAvatar = userAvatarUrl,
-                                        surfaceColor = surfaceColor,
                                         onClick = onCreateStoryClick
                                     )
                                 }
@@ -207,13 +274,11 @@ fun HomeScreen(
                                 }
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(6.dp))
                     }
 
                     // Post Upload Pipe (animates 0% to 100% until post is complete)
                     if (uploadState.isUploading) {
-                        item {
+                        item(key = "home_upload_pipe_active") {
                             PostUploadPipeCard(
                                 uploadState = uploadState,
                                 userAvatar = userAvatarUrl
@@ -223,7 +288,7 @@ fun HomeScreen(
                     }
 
                     // Post Feed List
-                    itemsIndexed(posts, key = { _, post -> post.id }) { _, post ->
+                    itemsIndexed(posts, key = { _, post -> "post_${post.id}" }) { _, post ->
                         PostCard(
                             post = post,
                             currentUser = currentUser,
@@ -245,30 +310,36 @@ fun HomeScreen(
 @Composable
 private fun CreateStoryCard(
     userAvatar: String,
-    surfaceColor: Color,
     onClick: () -> Unit
 ) {
+    val isDark = SoftUITheme.isDark
+    val cardBg = if (isDark) Color(0xFF1E2128) else Color(0xFFF9FAFC)
+    val cardBorder = if (isDark) Color(0x33FFFFFF) else Color(0x1F000000)
+
+    // Sleek Card without drop shadow ("শ্যাডো ছাড়া কার্ড")
     Box(
         modifier = Modifier
-            .width(105.dp)
-            .height(165.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            .width(108.dp)
+            .height(170.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(cardBg)
+            .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
             .clickable { onClick() }
             .testTag("create_story_card")
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Top: User Profile Image (68% height)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .weight(0.68f)
+                    .background(if (isDark) Color(0xFF16181E) else Color(0xFFE8F1FC)),
                 contentAlignment = Alignment.Center
             ) {
                 if (userAvatar.isNotBlank()) {
                     AsyncImage(
                         model = userAvatar,
-                        contentDescription = "Create Story Avatar Background",
+                        contentDescription = "Create Story Avatar",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -276,36 +347,55 @@ private fun CreateStoryCard(
                     FlikataAvatar(
                         name = "Me",
                         avatarUrl = null,
-                        size = 46.dp
+                        size = 48.dp
                     )
                 }
+
+                // Smooth gradient overlay to seamlessly blend the photo into the card base
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(30.dp)
+                        .align(Alignment.BottomCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, cardBg.copy(alpha = 0.7f))
+                            )
+                        )
+                )
             }
 
+            // Bottom: Clean card base for "Create story" text (32% height)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp)
-                    .background(surfaceColor),
+                    .weight(0.32f)
+                    .background(cardBg),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = "Create story",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (isDark) Color(0xFFF0F2F5) else Color(0xFF1E293B),
                     modifier = Modifier.padding(top = 10.dp)
                 )
             }
         }
 
+        // Circular '+' Button resting cleanly on the seam between photo and base
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 34.dp)
-                .size(32.dp)
+                .padding(bottom = 36.dp)
+                .size(34.dp)
                 .clip(CircleShape)
-                .background(FlikataPrimary)
-                .border(2.dp, surfaceColor, CircleShape),
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF0075FF), Color(0xFF0052D4))
+                    )
+                )
+                .border(2.5.dp, cardBg, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(

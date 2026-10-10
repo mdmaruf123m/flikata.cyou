@@ -60,11 +60,11 @@ foreach ($reels as $r) {
             SELECT c.*, COALESCE(u.full_name, 'User') AS author_name, COALESCE(u.profile_pic, '') AS author_avatar, COALESCE(u.is_verified, 0) AS is_verified
             FROM comments c
             LEFT JOIN users u ON c.user_id = u.id
-            WHERE c.reel_id = ?
+            WHERE c.reel_id = ? OR (c.post_id > 0 AND c.post_id = ?)
             ORDER BY c.id DESC
-            LIMIT 20
+            LIMIT 30
         ");
-        $cStmt->execute([$r['id']]);
+        $cStmt->execute([$r['id'], $r['id']]);
         $comments = $cStmt->fetchAll() ?: [];
     } catch (Exception $ce) {}
 
@@ -117,6 +117,20 @@ try {
     $videoPosts = $pStmt->fetchAll() ?: [];
     foreach ($videoPosts as $vp) {
         if (!in_array($vp['video_url'], $seenMediaUrls)) {
+            $vpComments = [];
+            try {
+                $cStmt = $pdo->prepare("
+                    SELECT c.*, COALESCE(u.full_name, 'User') AS author_name, COALESCE(u.profile_pic, '') AS author_avatar, COALESCE(u.is_verified, 0) AS is_verified
+                    FROM comments c
+                    LEFT JOIN users u ON c.user_id = u.id
+                    WHERE c.post_id = ?
+                    ORDER BY c.id DESC
+                    LIMIT 30
+                ");
+                $cStmt->execute([$vp['id']]);
+                $vpComments = $cStmt->fetchAll() ?: [];
+            } catch (Exception $ce) {}
+
             $formatted[] = [
                 'id'            => 'post_' . $vp['id'],
                 'userId'        => (string)$vp['user_id'],
@@ -133,7 +147,17 @@ try {
                 'viewsCount'    => '0',
                 'isLiked'       => false,
                 'userReaction'  => null,
-                'comments'      => []
+                'comments'      => array_map(function($c) {
+                    return [
+                        'id'            => (string)$c['id'],
+                        'authorName'    => $c['author_name'],
+                        'authorAvatar'  => $c['author_avatar'] ?: '',
+                        'text'          => $c['text'],
+                        'timestamp'     => $c['created_at'],
+                        'reactionEmoji' => $c['reaction_emoji'] ?? null,
+                        'isVerified'    => (bool)$c['is_verified']
+                    ];
+                }, $vpComments)
             ];
             $seenMediaUrls[] = $vp['video_url'];
         }

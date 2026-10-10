@@ -18,7 +18,9 @@ data class User(
     val followersCount: Int = 0,
     val followingCount: Int = 0,
     val postsCount: Int = 0,
-    val joinedDate: String = "Joined September 2026"
+    val joinedDate: String = "Joined September 2026",
+    @Json(name = "auth_token") val authToken: String? = null,
+    @Json(name = "is_online") val isOnline: Boolean = true
 ) {
     val fullName: String get() = "$firstName $lastName".trim()
 }
@@ -37,6 +39,7 @@ data class Comment(
     val postId: String = "",
     val authorName: String = "",
     val authorAvatar: String = "",
+    val isVerified: Boolean = false,
     val text: String = "",
     val timestamp: String = "",
     val likesCount: Int = 0,
@@ -88,17 +91,30 @@ data class Story(
 @JsonClass(generateAdapter = true)
 data class ChatMessage(
     val id: String,
-    @Json(name = "thread_id") val threadId: String,
-    @Json(name = "sender_id") val senderId: String,
-    @Json(name = "sender_name") val senderName: String,
-    @Json(name = "sender_avatar") val senderAvatar: String,
-    @Json(name = "is_verified") val isVerified: Boolean = false,
-    val message: String,
-    val timestamp: String,
+    @Json(name = "threadId") val threadIdRaw: String? = null,
+    @Json(name = "thread_id") val threadIdAlt: String? = null,
+    @Json(name = "senderId") val senderIdRaw: String? = null,
+    @Json(name = "sender_id") val senderIdAlt: String? = null,
+    @Json(name = "senderName") val senderNameRaw: String? = null,
+    @Json(name = "sender_name") val senderNameAlt: String? = null,
+    @Json(name = "senderAvatar") val senderAvatarRaw: String? = null,
+    @Json(name = "sender_avatar") val senderAvatarAlt: String? = null,
+    @Json(name = "is_verified") val isVerifiedAlt: Boolean = false,
+    @Json(name = "isVerified") val isVerifiedRaw: Boolean = false,
+    val message: String = "",
+    val timestamp: String = "",
     @Json(name = "is_voice_message") val isVoiceMessage: Boolean = false,
     @Json(name = "is_missed_call") val isMissedCall: Boolean = false,
-    @Json(name = "unread_count") val unreadCount: Int = 0
-)
+    @Json(name = "unread_count") val unreadCountAlt: Int = 0,
+    @Json(name = "unreadCount") val unreadCountRaw: Int = 0
+) {
+    val threadId: String get() = threadIdRaw ?: threadIdAlt ?: id
+    val senderId: String get() = senderIdRaw ?: senderIdAlt ?: id
+    val senderName: String get() = senderNameRaw ?: senderNameAlt ?: "User"
+    val senderAvatar: String get() = senderAvatarRaw ?: senderAvatarAlt ?: ""
+    val isVerified: Boolean get() = isVerifiedRaw || isVerifiedAlt
+    val unreadCount: Int get() = if (unreadCountRaw > 0) unreadCountRaw else unreadCountAlt
+}
 
 @JsonClass(generateAdapter = true)
 data class ApiResponse<T>(
@@ -237,5 +253,62 @@ data class PresignedUploadResponse(
     val success: Boolean = false,
     val message: String? = null,
     val data: PresignedUploadData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class ServerMessageItem(
+    val id: String = "",
+    val text: String = "",
+    @Json(name = "imageUrl") val imageUrl: String? = null,
+    @Json(name = "videoUrl") val videoUrl: String? = null,
+    val isMe: Boolean = false,
+    val time: String = "Just now",
+    val isEdited: Boolean = false,
+    val isCallNotice: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class ServerMessagesData(
+    @Json(name = "conversation_id") val conversationId: Int? = null,
+    val messages: List<ServerMessageItem> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class ServerMessagesResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: ServerMessagesData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class UserProfileData(
+    val id: Int? = null,
+    @Json(name = "full_name") val fullName: String? = null,
+    val email: String? = null,
+    val phone: String? = null,
+    @Json(name = "profile_pic") val profilePic: String? = null,
+    @Json(name = "cover_pic") val coverPic: String? = null,
+    val bio: String? = null,
+    val occupation: String? = null,
+    val location: String? = null,
+    val gender: String? = null,
+    val dob: String? = null,
+    @Json(name = "is_verified") val isVerified: Int? = null,
+    @Json(name = "is_online") val isOnline: Int? = null,
+    @Json(name = "posts_count") val postsCount: Int? = 0,
+    @Json(name = "photos_count") val photosCount: Int? = 0,
+    @Json(name = "reels_count") val reelsCount: Int? = 0,
+    val joinedDate: String? = null
+) {
+    val idString: String get() = id?.toString() ?: ""
+    val isVerifiedBool: Boolean get() = isVerified == 1
+    val isOnlineBool: Boolean get() = isOnline == 1
+}
+
+@JsonClass(generateAdapter = true)
+data class UserProfileResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: UserProfileData? = null
 )
 
