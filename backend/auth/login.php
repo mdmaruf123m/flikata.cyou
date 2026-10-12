@@ -36,6 +36,17 @@ if (!$user || !password_verify($password, $user['password_hash'])) {
     exit;
 }
 
+// Check if user is banned by admin
+if (!empty($user['is_banned'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'status'  => 'error',
+        'success' => false,
+        'message' => 'আপনার একাউন্টটি এডমিন কর্তৃক নিষিদ্ধ (Banned) করা হয়েছে। দয়া করে সাপোর্টে যোগাযোগ করুন।'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // Generate new auth token & set online
 $newToken = bin2hex(random_bytes(32));
 $stmt = $pdo->prepare("UPDATE users SET auth_token = ?, is_online = 1 WHERE id = ?");

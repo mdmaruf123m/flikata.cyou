@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ClearAll
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Favorite
@@ -56,10 +57,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.ExperimentalMaterial3Api
 import com.example.data.model.FlikataNotification
 import com.example.ui.components.SoftUITheme
 import com.example.ui.viewmodel.MainViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationScreen(
     viewModel: MainViewModel,
@@ -69,9 +73,14 @@ fun NotificationScreen(
         onBack()
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.loadNotifications()
+    }
+
     val isDark = SoftUITheme.isDark
     val notifications by viewModel.notifications.collectAsState()
     val unreadCount by viewModel.unreadNotificationsCount.collectAsState()
+    val isRefreshing by viewModel.isRefreshingNotifications.collectAsState()
     var selectedFilter by remember { mutableStateOf("All") } // "All", "Unread", "Posts"
 
     val filteredList = remember(notifications, selectedFilter) {
@@ -320,69 +329,75 @@ fun NotificationScreen(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Notifications List
-        if (filteredList.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
+        // Notifications List with Pull-To-Refresh
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { viewModel.refreshNotifications() },
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (filteredList.isEmpty()) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .shadow(2.dp, RoundedCornerShape(20.dp), ambientColor = SoftUITheme.ShadowDark)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(SoftUITheme.SurfaceCard)
-                        .border(1.dp, cardBorderBrush, RoundedCornerShape(20.dp))
+                        .fillMaxSize()
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(if (isDark) Color(0xFF1E2128) else Color(0xFFF3F7FD))
-                                .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0x33A0C0E8), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.NotificationsNone,
-                                contentDescription = null,
-                                tint = SoftUITheme.IconTint,
-                                modifier = Modifier.size(32.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(2.dp, RoundedCornerShape(20.dp), ambientColor = SoftUITheme.ShadowDark)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(SoftUITheme.SurfaceCard)
+                            .border(1.dp, cardBorderBrush, RoundedCornerShape(20.dp))
+                            .padding(32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDark) Color(0xFF1E2128) else Color(0xFFF3F7FD))
+                                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0x33A0C0E8), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsNone,
+                                    contentDescription = null,
+                                    tint = SoftUITheme.IconTint,
+                                    modifier = Modifier.size(32.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = if (selectedFilter == "Unread") "No unread notifications" else "No notifications yet",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SoftUITheme.TextDark
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "You're all caught up! Updates about likes, comments and friends will appear here.",
+                                fontSize = 13.5.sp,
+                                color = SoftUITheme.TextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
                             )
                         }
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = if (selectedFilter == "Unread") "No unread notifications" else "No notifications yet",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = SoftUITheme.TextDark
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "You're all caught up! Updates about likes, comments and friends will appear here.",
-                            fontSize = 13.5.sp,
-                            color = SoftUITheme.TextSecondary,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
                     }
                 }
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                items(filteredList, key = { it.id }) { notif ->
-                    NeumorphicNotificationCard(
-                        notification = notif,
-                        onItemClick = { viewModel.markNotificationAsRead(notif.id) },
-                        onDeleteClick = { viewModel.deleteNotification(notif.id) }
-                    )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(filteredList, key = { it.id }) { notif ->
+                        NeumorphicNotificationCard(
+                            notification = notif,
+                            onItemClick = { viewModel.markNotificationAsRead(notif.id) },
+                            onDeleteClick = { viewModel.deleteNotification(notif.id) }
+                        )
+                    }
                 }
             }
         }
@@ -437,7 +452,7 @@ private fun NeumorphicNotificationCard(
                 modifier = Modifier.size(54.dp),
                 contentAlignment = Alignment.BottomEnd
             ) {
-                if (notification.avatarUrl != null) {
+                if (!notification.avatarUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = notification.avatarUrl,
                         contentDescription = null,

@@ -756,6 +756,45 @@ class FlikataRepository(
             Result.failure(e)
         }
     }
+
+    suspend fun getNotifications(): List<com.example.data.model.FlikataNotification> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val response = ApiClient.apiService.getNotifications(userId = uid)
+            if (response.isSuccessful && response.body()?.data != null) {
+                response.body()!!.data!!
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun markNotificationsRead(id: String? = null) {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        try {
+            ApiClient.apiService.markNotificationsRead(userId = uid, notificationId = id)
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    suspend fun deleteNotification(id: String? = null) {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        try {
+            ApiClient.apiService.deleteNotification(userId = uid, notificationId = id)
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    suspend fun updateUserLocal(user: User) {
+        userDao.insertUser(user.toEntity(isLoggedIn = true))
+    }
 }
 
 private fun UserEntity.toModel() = User(

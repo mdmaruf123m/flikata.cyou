@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -226,15 +227,22 @@ fun ProfileScreen(
     val secondaryBtnBorder = if (isDark) Color(0x33FFFFFF) else Color(0x33A0C0E8)
     val secondaryBtnText = if (isDark) Color(0xFF3897F0) else Color(0xFF0075FF)
 
+    val isRefreshingProfile by viewModel.isRefreshingProfile.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(screenBg)
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 80.dp)
+        PullToRefreshBox(
+            isRefreshing = isRefreshingProfile,
+            onRefresh = { viewModel.refreshProfile() },
+            modifier = Modifier.fillMaxSize()
         ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
             // Top Cover Banner + Overlapping Curved Profile Card
             item {
                 Box(
@@ -360,7 +368,7 @@ fun ProfileScreen(
                                 .padding(top = 56.dp, bottom = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // Name & Dropdown Arrow
+                            // Name & Verification Badge
                             Row(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -371,23 +379,8 @@ fun ProfileScreen(
                                     color = textPrimary
                                 )
                                 if (displayIsVerified) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    VerifiedBadge(size = 18.dp)
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(28.dp)
-                                        .clip(CircleShape)
-                                        .background(screenVariant)
-                                        .clickable { showSettingsSheet = true },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ArrowDropDown,
-                                        contentDescription = "Options",
-                                        tint = textPrimary
-                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    VerifiedBadge(size = 20.dp)
                                 }
                             }
 
@@ -940,6 +933,7 @@ fun ProfileScreen(
             }
         }
     }
+}
 
     // Modal Bottom Sheet for Profile 3-Dots Settings matching Screenshot 3
     if (showSettingsSheet) {

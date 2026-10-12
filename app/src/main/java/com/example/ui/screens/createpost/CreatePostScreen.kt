@@ -76,6 +76,7 @@ import coil.compose.AsyncImage
 import com.example.ui.components.FlikataAvatar
 import com.example.ui.components.FlikataVideoPlayer
 import com.example.ui.components.PostBackgroundHelper
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.FlikataPrimary
 import com.example.ui.theme.FlikataSoftBlue
 import com.example.ui.theme.FlikataSurface
@@ -209,12 +210,18 @@ fun CreatePostScreen(
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Column {
-                    Text(
-                        text = currentUser?.fullName ?: "md sumon Islam",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
-                        color = FlikataTextPrimary
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = currentUser?.fullName ?: "md sumon Islam",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = FlikataTextPrimary
+                        )
+                        if (currentUser?.isVerified == true) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            VerifiedBadge(size = 14.dp)
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(4.dp))
 

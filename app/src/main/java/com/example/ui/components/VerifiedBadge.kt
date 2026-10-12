@@ -1,37 +1,36 @@
 package com.example.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.ui.theme.FlikataVerified
+import com.example.R
 
+/**
+ * Authentic Facebook-style Blue Verification Rosette Badge ("কাটা কাটা ব্লু ব্যাচ")
+ * Exactly replicates the Facebook / Meta 16-point scalloped starburst rosette with centered checkmark.
+ */
 @Composable
 fun VerifiedBadge(
     modifier: Modifier = Modifier,
     size: Dp = 16.dp,
-    badgeColor: Color = FlikataVerified
+    badgeColor: Color = Color(0xFF0866FF)
 ) {
     Box(
-        modifier = modifier
-            .size(size)
-            .background(badgeColor, CircleShape),
+        modifier = modifier.size(size),
         contentAlignment = Alignment.Center
     ) {
         Icon(
-            imageVector = Icons.Default.Check,
-            contentDescription = "Verified",
-            tint = Color.White,
-            modifier = Modifier.size(size * 0.7f)
+            painter = painterResource(id = R.drawable.ic_fb_verified),
+            contentDescription = "Verified Account",
+            tint = Color.Unspecified,
+            modifier = Modifier.size(size)
         )
     }
 }

@@ -41,6 +41,8 @@ $rStmt = $pdo->prepare("SELECT COUNT(*) FROM reels WHERE user_id = ?");
 $rStmt->execute([$targetUserId]);
 $user['reels_count'] = (int)$rStmt->fetchColumn();
 
+$user['is_verified'] = (int)($user['is_verified'] ?? 0);
+$user['is_online'] = (int)($user['is_online'] ?? 0);
 $user['joinedDate'] = 'Joined ' . date('F Y', strtotime($user['created_at']));
 
 jsonResponse(true, $user, 'Profile loaded.');

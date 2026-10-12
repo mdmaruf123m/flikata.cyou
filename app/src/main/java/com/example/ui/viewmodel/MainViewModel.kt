@@ -144,6 +144,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+
+        // Initial load of notifications
+        loadNotifications()
     }
 
     fun toggleDarkMode() {
@@ -151,6 +154,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val isRefreshing = MutableStateFlow(false)
+    val isRefreshingNotifications = MutableStateFlow(false)
+    val isRefreshingProfile = MutableStateFlow(false)
+    val isRefreshingChats = MutableStateFlow(false)
 
     fun refreshFeed() {
         viewModelScope.launch {
@@ -158,10 +164,55 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.syncPostsFromServer()
             syncStories()
             syncReelsFromServer()
+            loadNotifications()
             currentUser.value?.id?.let { uid ->
                 repository.syncChatsFromServer(uid)
             }
             isRefreshing.value = false
+        }
+    }
+
+    fun refreshChats() {
+        viewModelScope.launch {
+            isRefreshingChats.value = true
+            currentUser.value?.id?.let { uid ->
+                repository.syncChatsFromServer(uid)
+            }
+            isRefreshingChats.value = false
+        }
+    }
+
+    fun refreshProfile() {
+        viewModelScope.launch {
+            isRefreshingProfile.value = true
+            val user = currentUser.value
+            if (user != null) {
+                val res = repository.fetchUserProfile(user.id)
+                if (res.isSuccess) {
+                    val p = res.getOrNull()
+                    if (p != null) {
+                        val names = (p.fullName ?: user.fullName).split(" ")
+                        val updated = user.copy(
+                            firstName = names.firstOrNull() ?: user.firstName,
+                            lastName = names.drop(1).joinToString(" ").ifBlank { user.lastName },
+                            isVerified = p.isVerifiedBool,
+                            profilePic = p.profilePic ?: user.profilePic,
+                            coverPic = p.coverPic ?: user.coverPic,
+                            bio = p.bio ?: user.bio,
+                            postsCount = p.postsCount ?: user.postsCount
+                        )
+                        repository.updateUserLocal(updated)
+                    }
+                }
+            }
+            selectedUserProfileId.value?.let { externalId ->
+                val res = repository.fetchUserProfile(externalId)
+                if (res.isSuccess) {
+                    selectedUserProfileData.value = res.getOrNull()
+                }
+            }
+            repository.syncPostsFromServer()
+            isRefreshingProfile.value = false
         }
     }
 
@@ -533,22 +584,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         list.count { !it.isRead }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
+    fun loadNotifications() {
+        viewModelScope.launch {
+            val list = repository.getNotifications()
+            if (list.isNotEmpty() || _notifications.value.isEmpty()) {
+                _notifications.value = list
+            }
+        }
+    }
+
+    fun refreshNotifications() {
+        viewModelScope.launch {
+            isRefreshingNotifications.value = true
+            val list = repository.getNotifications()
+            _notifications.value = list
+            isRefreshingNotifications.value = false
+        }
+    }
+
     fun markAllNotificationsAsRead() {
         _notifications.value = _notifications.value.map { it.copy(isRead = true) }
+        viewModelScope.launch {
+            repository.markNotificationsRead(null)
+        }
     }
 
     fun markNotificationAsRead(id: String) {
         _notifications.value = _notifications.value.map {
             if (it.id == id) it.copy(isRead = true) else it
         }
+        viewModelScope.launch {
+            repository.markNotificationsRead(id)
+        }
     }
 
     fun deleteNotification(id: String) {
         _notifications.value = _notifications.value.filter { it.id != id }
+        viewModelScope.launch {
+            repository.deleteNotification(id)
+        }
     }
 
     fun clearAllNotifications() {
         _notifications.value = emptyList()
+        viewModelScope.launch {
+            repository.deleteNotification(null)
+        }
     }
 
     // Edit Profile Form States matching Screenshots 1 & 2

@@ -133,14 +133,21 @@ data class AuthResponse(
 
 @JsonClass(generateAdapter = true)
 data class FlikataNotification(
-    val id: String,
-    val title: String,
-    val message: String,
-    val type: String = "post", // "post", "like", "friend", "system"
+    val id: String = "",
+    val title: String = "",
+    val message: String = "",
+    val type: String = "general", // "post", "like", "friend", "system", "general", "announcement", "alert"
     val timestamp: String = "Just now",
     val isRead: Boolean = false,
     val avatarUrl: String? = null,
     val postThumbnail: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class NotificationListResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: List<FlikataNotification>? = null
 )
 
 data class PostUploadState(

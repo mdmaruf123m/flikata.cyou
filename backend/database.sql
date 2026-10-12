@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `gender` VARCHAR(20) DEFAULT 'Male',
   `dob` DATE DEFAULT NULL,
   `is_verified` TINYINT(1) DEFAULT 0,
+  `is_banned` TINYINT(1) DEFAULT 0,
   `is_online` TINYINT(1) DEFAULT 1,
   `auth_token` VARCHAR(255) DEFAULT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -229,4 +230,19 @@ INSERT INTO `reel_settings` (`id`, `max_duration_seconds`, `description`)
 VALUES (1, 60, 'Maximum allowed duration in seconds for reels/videos. Change this value to adjust the duration limit.')
 ON DUPLICATE KEY UPDATE `id` = `id`;
 
+-- 17. Admins Table
+CREATE TABLE IF NOT EXISTS `admins` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(150) NOT NULL DEFAULT 'Super Admin',
+  `email` VARCHAR(150) NOT NULL UNIQUE,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `admins` (`id`, `name`, `email`, `password_hash`)
+VALUES (1, 'Super Admin', 'admin@gmail.com', '11223344')
+ON DUPLICATE KEY UPDATE `email` = 'admin@gmail.com';
+
 SET FOREIGN_KEY_CHECKS = 1;
+

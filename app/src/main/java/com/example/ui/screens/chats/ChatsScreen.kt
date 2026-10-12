@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -73,6 +74,7 @@ data class ActiveUser(
 /**
  * 3D Soft Neumorphic Chats Screen with tactile cards, active stories row, and verified avatars
  */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ChatsScreen(
     viewModel: MainViewModel,
@@ -81,6 +83,7 @@ fun ChatsScreen(
     val currentUser by viewModel.currentUser.collectAsState()
     val chats by viewModel.chats.collectAsState()
     val allPosts by viewModel.posts.collectAsState()
+    val isRefreshingChats by viewModel.isRefreshingChats.collectAsState()
     val activeUsers = remember(chats, allPosts, currentUser) {
         val fromChats = chats.map {
             ActiveUser(
@@ -298,12 +301,17 @@ fun ChatsScreen(
             }
         }
 
-        // Chat List & Active users in LazyColumn
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        // Chat List & Active users in LazyColumn with Pull-to-Refresh
+        PullToRefreshBox(
+            isRefreshing = isRefreshingChats,
+            onRefresh = { viewModel.refreshChats() },
+            modifier = Modifier.fillMaxSize()
         ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
             // Active Users Row
             if (activeUsers.isNotEmpty() && searchQuery.isBlank()) {
                 item {
@@ -406,6 +414,7 @@ fun ChatsScreen(
         }
     }
 }
+}
 
 /**
  * 3D Neumorphic Active User Avatar
@@ -466,14 +475,23 @@ private fun ActiveUser3DItem(
 
         Spacer(modifier = Modifier.height(5.dp))
 
-        Text(
-            text = user.name.split(" ").firstOrNull() ?: user.name,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = SoftUITheme.TextDark,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = user.name.split(" ").firstOrNull() ?: user.name,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = SoftUITheme.TextDark,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (user.isVerified) {
+                Spacer(modifier = Modifier.width(2.dp))
+                VerifiedBadge(size = 11.dp)
+            }
+        }
     }
 }
 

@@ -237,4 +237,24 @@ interface FlikataApiService {
         @Field("text_content") textContent: String? = null,
         @Field("background_color") backgroundColor: String? = null
     ): Response<GenericResponse>
+
+    @GET("notifications/get_notifications.php")
+    suspend fun getNotifications(
+        @Query("user_id") userId: String? = null
+    ): Response<com.example.data.model.NotificationListResponse>
+
+    @FormUrlEncoded
+    @POST("notifications/mark_read.php")
+    suspend fun markNotificationsRead(
+        @Field("user_id") userId: String,
+        @Field("id") notificationId: String? = null
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("notifications/delete_notification.php")
+    suspend fun deleteNotification(
+        @Field("user_id") userId: String,
+        @Field("id") notificationId: String? = null
+    ): Response<GenericResponse>
 }
+

@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import com.example.data.remote.ApiClient
 import com.example.ui.components.FlikataAvatar
 import com.example.ui.components.SoftUITheme
+import com.example.ui.components.VerifiedBadge
 import com.example.ui.theme.FlikataError
 import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.Screen
@@ -273,12 +274,18 @@ fun MenuScreen(
                         Spacer(modifier = Modifier.width(14.dp))
 
                         Column {
-                            Text(
-                                text = currentUser?.fullName ?: "Maruf Hossain",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.5.sp,
-                                color = SoftUITheme.TextDark
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = currentUser?.fullName ?: "Maruf Hossain",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.5.sp,
+                                    color = SoftUITheme.TextDark
+                                )
+                                if (currentUser?.isVerified == true) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    VerifiedBadge(size = 15.dp)
+                                }
+                            }
                             Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "See your profile",

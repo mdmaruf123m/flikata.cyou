@@ -1,0 +1,14 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Facebook Authentic Scalloped / Starburst Blue Rosette ("কাটা কাটা ব্লু ব্যাচ") -->
+    <path
+        android:fillColor="#0866FF"
+        android:pathData="M22.25,12c0,-1.43 -0.88,-2.67 -2.15,-3.21c0.35,-1.39 -0.06,-2.87 -1.09,-3.9c-1.03,-1.03 -2.51,-1.44 -3.9,-1.09C14.57,2.53 13.33,1.65 11.9,1.65c-1.43,0 -2.67,0.88 -3.21,2.15c-1.39,-0.35 -2.87,0.06 -3.9,1.09c-1.03,1.03 -1.44,2.51 -1.09,3.9C2.43,9.33 1.55,10.57 1.55,12c0,1.43 0.88,2.67 2.15,3.21c-0.35,1.39 0.06,2.87 1.09,3.9c1.03,1.03 2.51,1.44 3.9,1.09c0.54,1.27 1.78,2.15 3.21,2.15c1.43,0 2.67,-0.88 3.21,-2.15c1.39,0.35 2.87,-0.06 3.9,-1.09c1.03,-1.03 1.44,-2.51 1.09,-3.9C21.37,14.67 22.25,13.43 22.25,12z" />
+    <!-- White Checkmark -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M10.2,16.2l-4,-4l1.41,-1.41l2.59,2.59l6.59,-6.59l1.41,1.41z" />
+</vector>
