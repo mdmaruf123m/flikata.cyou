@@ -81,6 +81,8 @@ foreach ($posts as $row) {
         'commentsCount'    => max((int)$row['comments_count'], (int)$row['real_comments_count']),
         'shares_count'     => (int)$row['shares_count'],
         'sharesCount'      => (int)$row['shares_count'],
+        'views_count'      => (int)($row['views_count'] ?? 0),
+        'viewsCount'       => (int)($row['views_count'] ?? 0),
         'is_liked'         => (bool)$row['is_liked'],
         'isLiked'          => (bool)$row['is_liked'],
         'user_reaction'    => $row['user_reaction'],

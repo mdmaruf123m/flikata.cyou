@@ -108,14 +108,14 @@ fun ProfileSettingsBottomSheet(
                     }
                 )
 
-                // 4. Verified
+                // 4. Verified Badge
                 BottomSheetMenuItem(
                     icon = Icons.Default.Verified,
-                    iconTint = Color(0xFF00A884),
-                    bgColor = Color(0xFF00A884).copy(alpha = 0.15f),
-                    title = "Verified",
+                    iconTint = Color(0xFF0866FF),
+                    bgColor = Color(0xFF0866FF).copy(alpha = 0.15f),
+                    title = "Verified Badge",
                     onClick = {
-                        onOptionClick("Verified")
+                        onOptionClick("Verified Badge")
                         onDismiss()
                     }
                 )

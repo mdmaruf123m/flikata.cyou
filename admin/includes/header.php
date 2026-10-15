@@ -9,6 +9,18 @@ checkAdminAuth();
 $currentPage = basename($_SERVER['PHP_SELF']);
 $adminName = $_SESSION['admin_name'] ?? 'Super Admin';
 $adminEmail = $_SESSION['admin_email'] ?? 'admin@gmail.com';
+
+// Counts for badges
+$pendingVerifCount = 0;
+$pendingDepositCount = 0;
+$pendingWithdrawCount = 0;
+$pendingMonetizationCount = 0;
+try {
+    $pendingVerifCount = (int)$pdo->query("SELECT COUNT(*) FROM verification_requests WHERE status = 'pending'")->fetchColumn();
+    $pendingDepositCount = (int)$pdo->query("SELECT COUNT(*) FROM deposit_requests WHERE status = 'pending'")->fetchColumn();
+    $pendingWithdrawCount = (int)$pdo->query("SELECT COUNT(*) FROM withdraw_requests WHERE status = 'pending'")->fetchColumn();
+    $pendingMonetizationCount = (int)$pdo->query("SELECT COUNT(*) FROM monetization_requests WHERE status = 'pending'")->fetchColumn();
+} catch (Exception $e) {}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -21,7 +33,7 @@ $adminEmail = $_SESSION['admin_email'] ?? 'admin@gmail.com';
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.php" rel="stylesheet" onerror="this.onerror=null;this.href='https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css';">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/css/bootstrap.min.css" rel="stylesheet">
     <!-- Bootstrap Icons & FontAwesome -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -394,6 +406,58 @@ $adminEmail = $_SESSION['admin_email'] ?? 'admin@gmail.com';
             <span>পোস্টসমূহ (Posts)</span>
         </a>
 
+        <div class="nav-label mt-3">ভেরিফিকেশন ও ওয়ালেট</div>
+        <a href="verification_packages.php" class="sidebar-link <?= $currentPage === 'verification_packages.php' ? 'active' : '' ?>">
+            <i class="bi bi-patch-check-fill text-primary"></i>
+            <span>ভেরিফিকেশন ব্যাচ</span>
+        </a>
+        <a href="verification_requests.php" class="sidebar-link <?= $currentPage === 'verification_requests.php' ? 'active' : '' ?> d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-person-check-fill text-info"></i>
+                <span>ভেরিফিকেশন রিকোয়েস্ট</span>
+            </div>
+            <?php if ($pendingVerifCount > 0): ?>
+                <span class="badge bg-warning text-dark rounded-pill ms-auto"><?= $pendingVerifCount ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="deposit_methods.php" class="sidebar-link <?= $currentPage === 'deposit_methods.php' ? 'active' : '' ?>">
+            <i class="bi bi-wallet2 text-success"></i>
+            <span>ডিপোজিট মেথড</span>
+        </a>
+        <a href="deposit_requests.php" class="sidebar-link <?= $currentPage === 'deposit_requests.php' ? 'active' : '' ?> d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-cash-stack text-success"></i>
+                <span>ডিপোজিট রিকোয়েস্ট</span>
+            </div>
+            <?php if ($pendingDepositCount > 0): ?>
+                <span class="badge bg-success text-white rounded-pill ms-auto"><?= $pendingDepositCount ?></span>
+            <?php endif; ?>
+        </a>
+        <a href="withdraw_methods.php" class="sidebar-link <?= $currentPage === 'withdraw_methods.php' ? 'active' : '' ?>">
+            <i class="bi bi-credit-card-2-front-fill text-warning"></i>
+            <span>উইথড্র মেথড</span>
+        </a>
+        <a href="withdraw_requests.php" class="sidebar-link <?= $currentPage === 'withdraw_requests.php' ? 'active' : '' ?> d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-arrow-up-right-circle-fill text-warning"></i>
+                <span>উইথড্র রিকোয়েস্ট</span>
+            </div>
+            <?php if ($pendingWithdrawCount > 0): ?>
+                <span class="badge bg-warning text-dark rounded-pill ms-auto"><?= $pendingWithdrawCount ?></span>
+            <?php endif; ?>
+        </a>
+
+        <div class="nav-label mt-3">মনিটাইজেশন ও পার্টনার</div>
+        <a href="monetization_requests.php" class="sidebar-link <?= $currentPage === 'monetization_requests.php' ? 'active' : '' ?> d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-cash-coin text-success"></i>
+                <span>মনিটাইজেশন রিকোয়েস্ট</span>
+            </div>
+            <?php if ($pendingMonetizationCount > 0): ?>
+                <span class="badge bg-success text-white rounded-pill ms-auto"><?= $pendingMonetizationCount ?></span>
+            <?php endif; ?>
+        </a>
+
         <div class="nav-label mt-3">কমিউনিকেশন ও নোটিশ</div>
         <a href="notifications.php" class="sidebar-link <?= $currentPage === 'notifications.php' ? 'active' : '' ?>">
             <i class="bi bi-bell-fill"></i>
@@ -438,7 +502,18 @@ $adminEmail = $_SESSION['admin_email'] ?? 'admin@gmail.com';
         </div>
     </div>
 
-    <div class="d-flex align-items-center gap-3">
+        <!-- Download Latest APK Button -->
+        <a href="flikata_latest.apk" download class="btn btn-sm btn-primary rounded-pill px-3 py-1.5 d-flex align-items-center gap-2 fw-bold text-white shadow-sm" title="লেটেস্ট Android APK ডাউনলোড করুন">
+            <i class="bi bi-android2 fs-6"></i>
+            <span class="d-none d-md-inline">ডাউনলোড APK</span>
+        </a>
+
+        <!-- Download Full Backend & Admin ZIP Button -->
+        <a href="flikata_backend_and_admin_cpanel.zip" download class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1.5 d-flex align-items-center gap-2 fw-bold shadow-sm" title="সম্পূর্ণ ব্যাকএন্ড ও এডমিন প্যানেল জিপ ডাউনলোড করুন">
+            <i class="bi bi-file-earmark-zip-fill fs-6 text-primary"></i>
+            <span class="d-none d-md-inline">ব্যাকএন্ড ZIP</span>
+        </a>
+
         <!-- Database Status Indicator -->
         <div class="badge rounded-pill bg-success-subtle text-success px-3 py-2 d-flex align-items-center gap-2 fw-semibold border border-success-subtle">
             <span class="spinner-grow spinner-grow-sm text-success" style="width: 8px; height: 8px;" role="status"></span>

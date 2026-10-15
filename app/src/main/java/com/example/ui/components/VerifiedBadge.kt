@@ -19,7 +19,7 @@ import com.example.R
 @Composable
 fun VerifiedBadge(
     modifier: Modifier = Modifier,
-    size: Dp = 16.dp,
+    size: Dp = 22.dp,
     badgeColor: Color = Color(0xFF0866FF)
 ) {
     Box(

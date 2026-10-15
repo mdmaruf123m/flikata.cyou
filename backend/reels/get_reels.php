@@ -83,7 +83,7 @@ foreach ($reels as $r) {
         'likesCount'    => (int)$r['likes_count'],
         'commentsCount' => (int)$r['comments_count'],
         'sharesCount'   => (int)$r['shares_count'],
-        'viewsCount'    => $r['views_count'] > 1000 ? round($r['views_count'] / 1000, 1) . 'K' : (string)$r['views_count'],
+        'viewsCount'    => (string)$r['views_count'],
         'isLiked'       => (bool)$r['is_liked'],
         'userReaction'  => $r['user_reaction'] ?: null,
         'comments'      => array_map(function($c) {
@@ -144,7 +144,7 @@ try {
                 'likesCount'    => (int)$vp['likes_count'],
                 'commentsCount' => (int)$vp['comments_count'],
                 'sharesCount'   => (int)$vp['shares_count'],
-                'viewsCount'    => '0',
+                'viewsCount'    => (string)($vp['views_count'] ?? '0'),
                 'isLiked'       => false,
                 'userReaction'  => null,
                 'comments'      => array_map(function($c) {

@@ -1,5 +1,6 @@
 package com.example.ui.screens.menu
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,18 +23,19 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.DynamicFeed
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -49,6 +51,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -64,7 +67,10 @@ import com.example.ui.viewmodel.MainViewModel
 import com.example.ui.viewmodel.Screen
 
 /**
- * 3D Soft Neumorphic Menu Screen with tactile clay cards, profile banner, and shortcuts
+ * 3D Soft Neumorphic Menu Screen
+ * Cleaned menu layout with Dark Mode card at the top,
+ * followed by: Wallet, Marketplace, Verified Badge, History, Saved, Dashboard, Advertisement, Settings,
+ * and bottom Connected Server & Logout controls.
  */
 @Composable
 fun MenuScreen(
@@ -73,6 +79,7 @@ fun MenuScreen(
 ) {
     val currentUser by viewModel.currentUser.collectAsState()
     val isDarkMode by viewModel.isDarkMode.collectAsState()
+    val context = LocalContext.current
 
     val screenBgBrush = if (isDarkMode) {
         Brush.verticalGradient(listOf(Color(0xFF121418), Color(0xFF181A20)))
@@ -90,13 +97,6 @@ fun MenuScreen(
     } else {
         Brush.verticalGradient(listOf(Color.White, Color(0xFFF3F7FD), Color(0xFFE8F1FC)))
     }
-    val circleButtonBg = if (isDarkMode) {
-        Brush.linearGradient(listOf(Color(0xFF2C303B), Color(0xFF20232B)))
-    } else {
-        Brush.linearGradient(listOf(Color.White, Color(0xFFE8F1FC)))
-    }
-    val circleButtonBorder = if (isDarkMode) Color(0x33FFFFFF) else Color(0xEEFFFFFF)
-    val buttonIconTint = if (isDarkMode) Color(0xFFE4E6EB) else Color(0xFF1E3A5F)
 
     Column(
         modifier = Modifier
@@ -130,7 +130,7 @@ fun MenuScreen(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // 3D Circular Back Button
+                    // Circular Back Button
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -142,7 +142,8 @@ fun MenuScreen(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = { viewModel.navigateTo(Screen.HOME) }
-                            ),
+                            )
+                            .testTag("menu_back_button"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -169,7 +170,7 @@ fun MenuScreen(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    // 3D Search Button
+                    // Search Button
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -181,7 +182,8 @@ fun MenuScreen(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
                                 onClick = { viewModel.navigateTo(Screen.SEARCH) }
-                            ),
+                            )
+                            .testTag("menu_search_button"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -192,7 +194,7 @@ fun MenuScreen(
                         )
                     }
 
-                    // 3D Settings Button
+                    // Settings Button
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -203,8 +205,11 @@ fun MenuScreen(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { }
-                            ),
+                                onClick = {
+                                    Toast.makeText(context, "Settings is coming soon!", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            .testTag("menu_top_settings_button"),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -247,6 +252,7 @@ fun MenuScreen(
                         onClick = onProfileClick
                     )
                     .padding(14.dp)
+                    .testTag("menu_profile_card")
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -254,7 +260,6 @@ fun MenuScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // 3D Avatar Frame
                         Box(
                             modifier = Modifier
                                 .size(52.dp)
@@ -276,14 +281,14 @@ fun MenuScreen(
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = currentUser?.fullName ?: "Maruf Hossain",
+                                    text = currentUser?.fullName ?: "User Profile",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.5.sp,
                                     color = SoftUITheme.TextDark
                                 )
                                 if (currentUser?.isVerified == true) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    VerifiedBadge(size = 15.dp)
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    VerifiedBadge(size = 20.dp)
                                 }
                             }
                             Spacer(modifier = Modifier.height(2.dp))
@@ -306,7 +311,7 @@ fun MenuScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 3D Neumorphic Dark Mode Switch Card
+            // 3D Neumorphic Dark Mode Switch Card (Preserved per request)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -323,6 +328,7 @@ fun MenuScreen(
                         RoundedCornerShape(18.dp)
                     )
                     .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .testTag("menu_dark_mode_card")
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -378,84 +384,144 @@ fun MenuScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // "All Shortcuts" Section Title
+            // Section Header
             Text(
-                text = "All Shortcuts",
+                text = "Shortcuts",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
                 color = SoftUITheme.TextDark,
-                modifier = Modifier.padding(bottom = 10.dp, start = 2.dp)
+                modifier = Modifier.padding(bottom = 12.dp, start = 2.dp)
             )
 
-            // 3D Grid Cards (Large vertical cards with 3D elevation and soft icons)
+            // 8 Clean Cards in 2-column grid
+            // Order:
+            // 1. Wallet (First!)
+            // 2. Marketplace (Coming Soon)
+            // 3. Verified Badge
+            // 4. History (Coming Soon)
+            // 5. Saved (Coming Soon)
+            // 6. Dashboard (Coming Soon)
+            // 7. Advertisement (Coming Soon)
+            // 8. Settings (Coming Soon)
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Row 1: Wallet & Marketplace
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Large3DShortcutCard(
-                        icon = Icons.Default.People,
-                        title = "Friends",
-                        subtitle = "Find friends & requests",
-                        iconBg = Color(0xFFE7F3FF),
-                        iconTint = Color(0xFF0075FF),
+                    MenuShortcutCard(
+                        icon = Icons.Default.AccountBalanceWallet,
+                        title = "Wallet",
+                        subtitle = "Balance & transactions",
+                        iconBg = Color(0xFFE8F5E9),
+                        iconTint = Color(0xFF2E7D32),
+                        badgeText = null,
+                        testTag = "menu_card_wallet",
                         modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateTo(Screen.FRIENDS) }
+                        onClick = { viewModel.navigateTo(Screen.WALLET) }
                     )
-                    Large3DShortcutCard(
-                        icon = Icons.Default.VideoLibrary,
-                        title = "Reels",
-                        subtitle = "Watch short videos",
-                        iconBg = Color(0xFFF3E5F5),
-                        iconTint = Color(0xFF8E24AA),
+                    MenuShortcutCard(
+                        icon = Icons.Default.Storefront,
+                        title = "Marketplace",
+                        subtitle = "Buy & sell items",
+                        iconBg = Color(0xFFE0F2FE),
+                        iconTint = Color(0xFF0284C7),
+                        badgeText = "Coming Soon",
+                        testTag = "menu_card_marketplace",
                         modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateTo(Screen.REELS) }
+                        onClick = { viewModel.navigateTo(Screen.MARKETPLACE) }
                     )
                 }
 
+                // Row 2: Verified Badge & History
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Large3DShortcutCard(
+                    MenuShortcutCard(
+                        icon = Icons.Default.Verified,
+                        title = "Verified Badge",
+                        subtitle = "Meta verification & badge",
+                        iconBg = Color(0xFFE3F2FD),
+                        iconTint = Color(0xFF0075FF),
+                        badgeText = null,
+                        testTag = "menu_card_verified_badge",
+                        modifier = Modifier.weight(1f),
+                        onClick = { viewModel.navigateTo(Screen.VERIFIED_BADGE) }
+                    )
+                    MenuShortcutCard(
+                        icon = Icons.Default.History,
+                        title = "History",
+                        subtitle = "Activity log & views",
+                        iconBg = Color(0xFFEDE7F6),
+                        iconTint = Color(0xFF673AB7),
+                        badgeText = "Coming Soon",
+                        testTag = "menu_card_history",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            Toast.makeText(context, "History will be available soon!", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                }
+
+                // Row 3: Saved & Dashboard
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    MenuShortcutCard(
                         icon = Icons.Default.Bookmark,
                         title = "Saved",
-                        subtitle = "Posts & bookmarks",
-                        iconBg = Color(0xE0E0F7FA),
+                        subtitle = "Saved posts & bookmarks",
+                        iconBg = Color(0xFFE0F7FA),
                         iconTint = Color(0xFF00897B),
+                        badgeText = "Coming Soon",
+                        testTag = "menu_card_saved",
                         modifier = Modifier.weight(1f),
-                        onClick = { }
+                        onClick = {
+                            Toast.makeText(context, "Saved items will be available soon!", Toast.LENGTH_SHORT).show()
+                        }
                     )
-                    Large3DShortcutCard(
-                        icon = Icons.Default.Groups,
-                        title = "Groups",
-                        subtitle = "Communities you follow",
+                    MenuShortcutCard(
+                        icon = Icons.Default.Dashboard,
+                        title = "Dashboard",
+                        subtitle = "Professional tools & monetization",
                         iconBg = Color(0xFFFFF3E0),
-                        iconTint = Color(0xFFF57C00),
+                        iconTint = Color(0xFFE65100),
+                        badgeText = null,
+                        testTag = "menu_card_dashboard",
                         modifier = Modifier.weight(1f),
-                        onClick = { }
+                        onClick = {
+                            viewModel.navigateTo(Screen.DASHBOARD)
+                        }
                     )
                 }
 
+                // Row 4: Advertisement & Settings
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Large3DShortcutCard(
-                        icon = Icons.Default.History,
-                        title = "Memories",
-                        subtitle = "Reminisce past posts",
-                        iconBg = Color(0xFFE8EAF6),
-                        iconTint = Color(0xFF3F51B5),
-                        modifier = Modifier.weight(1f),
-                        onClick = { }
-                    )
-                    Large3DShortcutCard(
-                        icon = Icons.Default.DynamicFeed,
-                        title = "Feeds",
-                        subtitle = "Most recent updates",
+                    MenuShortcutCard(
+                        icon = Icons.Default.Campaign,
+                        title = "Advertisement",
+                        subtitle = "Promote & grow audience",
                         iconBg = Color(0xFFFFEBEE),
-                        iconTint = Color(0xFFE53935),
+                        iconTint = Color(0xFFC2185B),
+                        badgeText = "Coming Soon",
+                        testTag = "menu_card_advertisement",
                         modifier = Modifier.weight(1f),
-                        onClick = { viewModel.navigateTo(Screen.HOME) }
+                        onClick = {
+                            Toast.makeText(context, "Ad Manager is coming soon!", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                    MenuShortcutCard(
+                        icon = Icons.Default.Settings,
+                        title = "Settings",
+                        subtitle = "Privacy & preferences",
+                        iconBg = Color(0xFFECEFF1),
+                        iconTint = Color(0xFF455A64),
+                        badgeText = "Coming Soon",
+                        testTag = "menu_card_settings",
+                        modifier = Modifier.weight(1f),
+                        onClick = {
+                            Toast.makeText(context, "Settings will be available in the next update!", Toast.LENGTH_SHORT).show()
+                        }
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
-            // 3D Connected Server Card
+            // 3D Connected Server Card (Preserved per request)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -540,9 +606,9 @@ fun MenuScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // 3D Neumorphic Log Out Button
+            // 3D Neumorphic Log Out Button (Preserved per request)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -592,15 +658,17 @@ fun MenuScreen(
 }
 
 /**
- * 3D Soft Neumorphic Large Shortcut Card
+ * Modern 3D Neumorphic Shortcut Card with optional "Coming Soon" badge
  */
 @Composable
-private fun Large3DShortcutCard(
+private fun MenuShortcutCard(
     icon: ImageVector,
     title: String,
     subtitle: String,
     iconBg: Color,
     iconTint: Color,
+    badgeText: String? = null,
+    testTag: String = "",
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {}
 ) {
@@ -635,24 +703,56 @@ private fun Large3DShortcutCard(
                 onClick = onClick
             )
             .padding(14.dp)
+            .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
     ) {
         Column(horizontalAlignment = Alignment.Start) {
-            // 3D Soft Icon Badge
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .shadow(2.dp, RoundedCornerShape(12.dp))
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(badgeBg)
-                    .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0x44FFFFFF), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = title,
-                    tint = iconTint,
-                    modifier = Modifier.size(23.dp)
-                )
+                // 3D Soft Icon Badge
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .shadow(2.dp, RoundedCornerShape(12.dp))
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(badgeBg)
+                        .border(1.dp, if (isDark) Color(0x22FFFFFF) else Color(0x44FFFFFF), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = title,
+                        tint = iconTint,
+                        modifier = Modifier.size(23.dp)
+                    )
+                }
+
+                // "Coming Soon" Pill Badge
+                if (!badgeText.isNullOrEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isDark) Color(0xFF352B12) else Color(0xFFFFF3E0)
+                            )
+                            .border(
+                                0.8.dp,
+                                if (isDark) Color(0x88FFB300) else Color(0xAAFFB74D),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                    ) {
+                        Text(
+                            text = badgeText,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (isDark) Color(0xFFFFB300) else Color(0xFFE65100),
+                            letterSpacing = 0.3.sp
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -660,7 +760,7 @@ private fun Large3DShortcutCard(
             Text(
                 text = title,
                 fontWeight = FontWeight.Bold,
-                fontSize = 15.5.sp,
+                fontSize = 15.sp,
                 color = SoftUITheme.TextDark
             )
 

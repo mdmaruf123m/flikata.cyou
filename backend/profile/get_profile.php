@@ -15,7 +15,7 @@ if (!$targetUserId) {
 }
 
 $stmt = $pdo->prepare("
-    SELECT id, full_name, email, phone, profile_pic, cover_pic, bio, occupation, location, gender, dob, is_verified, is_online, created_at 
+    SELECT id, full_name, email, phone, profile_pic, cover_pic, bio, occupation, location, gender, dob, is_verified, is_online, wallet_balance, verified_until, created_at, updated_at 
     FROM users 
     WHERE id = ?
 ");
@@ -41,8 +41,17 @@ $rStmt = $pdo->prepare("SELECT COUNT(*) FROM reels WHERE user_id = ?");
 $rStmt->execute([$targetUserId]);
 $user['reels_count'] = (int)$rStmt->fetchColumn();
 
+$secondsAgo = !empty($user['updated_at']) ? (time() - strtotime($user['updated_at'])) : 99999;
+if ((int)($user['is_verified'] ?? 0) === 1 && !empty($user['verified_until'])) {
+    $exp = strtotime($user['verified_until']);
+    if ($exp < strtotime('2090-01-01') && time() > ($exp + 3 * 86400)) {
+        $pdo->prepare("UPDATE users SET is_verified = 0 WHERE id = ?")->execute([$targetUserId]);
+        $user['is_verified'] = 0;
+    }
+}
 $user['is_verified'] = (int)($user['is_verified'] ?? 0);
-$user['is_online'] = (int)($user['is_online'] ?? 0);
+$user['wallet_balance'] = (float)($user['wallet_balance'] ?? 0.00);
+$user['is_online'] = ((int)($user['is_online'] ?? 0) === 1 && $secondsAgo <= 60) ? 1 : 0;
 $user['joinedDate'] = 'Joined ' . date('F Y', strtotime($user['created_at']));
 
 jsonResponse(true, $user, 'Profile loaded.');

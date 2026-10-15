@@ -41,9 +41,17 @@ backend/
 ├── profile/
 │   ├── get_profile.php           # User profile & stats (posts, reels, photos count)
 │   └── update_profile.php        # Update bio, avatar, banner, details
-└── notifications/
-    ├── get_notifications.php     # User notifications list
-    └── mark_read.php             # Mark as read
+├── notifications/
+│   ├── get_notifications.php     # User notifications list
+│   ├── mark_read.php             # Mark as read
+│   └── delete_notification.php   # Delete notifications
+└── calls/
+    ├── initiate_call.php         # Initiate audio call
+    ├── check_incoming_call.php   # Poll incoming calls
+    ├── answer_call.php           # Answer call
+    ├── get_call_status.php       # Call status
+    ├── end_call.php              # End call
+    └── audio_relay.php           # Real-time PCM audio relay
 ```
 
 ---

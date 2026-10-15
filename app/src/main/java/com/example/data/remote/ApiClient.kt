@@ -52,7 +52,9 @@ object ApiClient {
         chain.proceed(builder.build())
     }
 
-    private val okHttpClient: OkHttpClient by lazy {
+    val BASE_URL: String get() = baseUrl
+
+    val okHttpClient: OkHttpClient by lazy {
         val builder = OkHttpClient.Builder()
             .addInterceptor(authHeaderInterceptor)
             .addInterceptor(loggingInterceptor)

@@ -488,8 +488,8 @@ private fun ActiveUser3DItem(
                 overflow = TextOverflow.Ellipsis
             )
             if (user.isVerified) {
-                Spacer(modifier = Modifier.width(2.dp))
-                VerifiedBadge(size = 11.dp)
+                Spacer(modifier = Modifier.width(3.dp))
+                VerifiedBadge(size = 14.dp)
             }
         }
     }
@@ -571,15 +571,17 @@ private fun Chat3DItemRow(
                     )
                 }
 
-                // Active dot
-                Box(
-                    modifier = Modifier
-                        .size(13.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF45BD62))
-                        .border(1.5.dp, Color.White, CircleShape)
-                        .align(Alignment.BottomEnd)
-                )
+                // Active dot (only when online)
+                if (chat.isOnline) {
+                    Box(
+                        modifier = Modifier
+                            .size(13.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF45BD62))
+                            .border(2.dp, Color.White, CircleShape)
+                            .align(Alignment.BottomEnd)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(13.dp))
@@ -604,8 +606,17 @@ private fun Chat3DItemRow(
                             overflow = TextOverflow.Ellipsis
                         )
                         if (chat.isVerified) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            VerifiedBadge(size = 14.dp)
+                            Spacer(modifier = Modifier.width(5.dp))
+                            VerifiedBadge(size = 20.dp)
+                        }
+                        if (chat.isOnline) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF45BD62))
+                            )
                         }
                     }
 

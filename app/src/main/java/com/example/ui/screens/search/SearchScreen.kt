@@ -676,8 +676,8 @@ private fun SearchUser3DCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     if (user.isVerified) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        VerifiedBadge(size = 14.dp)
+                        Spacer(modifier = Modifier.width(5.dp))
+                        VerifiedBadge(size = 18.dp)
                     }
                 }
 

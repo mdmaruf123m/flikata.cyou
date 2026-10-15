@@ -219,7 +219,14 @@ interface FlikataApiService {
     suspend fun recordReelView(
         @Field("reel_id") reelId: String,
         @Field("user_id") userId: String? = null
-    ): Response<GenericResponse>
+    ): Response<com.example.data.model.RecordViewResponse>
+
+    @FormUrlEncoded
+    @POST("posts/record_view.php")
+    suspend fun recordPostView(
+        @Field("post_id") postId: String,
+        @Field("user_id") userId: String? = null
+    ): Response<com.example.data.model.RecordViewResponse>
 
     @GET("reels/reel_settings.php")
     suspend fun getReelSettings(): Response<ReelSettingsResponse>
@@ -256,5 +263,263 @@ interface FlikataApiService {
         @Field("user_id") userId: String,
         @Field("id") notificationId: String? = null
     ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("calls/initiate_call.php")
+    suspend fun initiateCall(
+        @Field("caller_id") callerId: String,
+        @Field("receiver_id") receiverId: String
+    ): Response<com.example.data.model.InitiateCallResponse>
+
+    @GET("calls/check_incoming_call.php")
+    suspend fun checkIncomingCall(
+        @Query("user_id") userId: String
+    ): Response<com.example.data.model.CheckIncomingCallResponse>
+
+    @GET("calls/get_call_status.php")
+    suspend fun getCallStatus(
+        @Query("call_id") callId: Int
+    ): Response<com.example.data.model.CallStatusResponse>
+
+    @FormUrlEncoded
+    @POST("calls/answer_call.php")
+    suspend fun answerCall(
+        @Field("call_id") callId: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("calls/end_call.php")
+    suspend fun endCall(
+        @Field("call_id") callId: Int,
+        @Field("reason") reason: String = "ended",
+        @Field("duration") duration: Int = 0
+    ): Response<GenericResponse>
+
+    // Verification Badge APIs
+    @GET("verification/get_packages.php")
+    suspend fun getVerificationPackages(
+        @Query("user_id") userId: String
+    ): Response<com.example.data.model.VerificationPackagesResponse>
+
+    @FormUrlEncoded
+    @POST("verification/submit_request.php")
+    suspend fun submitVerificationRequest(
+        @Field("user_id") userId: String,
+        @Field("package_id") packageId: Int,
+        @Field("id_front_url") idFrontUrl: String? = null,
+        @Field("id_back_url") idBackUrl: String? = null,
+        @Field("selfie_url") selfieUrl: String? = null
+    ): Response<GenericResponse>
+
+    @GET("verification/admin_packages.php")
+    suspend fun getAdminPackages(): Response<com.example.data.model.AdminPackagesResponse>
+
+    @FormUrlEncoded
+    @POST("verification/admin_packages.php")
+    suspend fun adminCreatePackage(
+        @Field("action") action: String = "create_package",
+        @Field("title") title: String,
+        @Field("description") description: String?,
+        @Field("price") price: Double,
+        @Field("duration_type") durationType: String,
+        @Field("duration_value") durationValue: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("verification/admin_packages.php")
+    suspend fun adminEditPackage(
+        @Field("action") action: String = "edit_package",
+        @Field("id") id: Int,
+        @Field("title") title: String,
+        @Field("description") description: String?,
+        @Field("price") price: Double,
+        @Field("duration_type") durationType: String,
+        @Field("duration_value") durationValue: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("verification/admin_packages.php")
+    suspend fun adminDeletePackage(
+        @Field("action") action: String = "delete_package",
+        @Field("id") id: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("verification/admin_packages.php")
+    suspend fun adminSaveVerificationSettings(
+        @Field("action") action: String = "save_settings",
+        @Field("id_card_required") idCardRequired: Int,
+        @Field("selfie_required") selfieRequired: Int,
+        @Field("grace_period_days") gracePeriodDays: Int
+    ): Response<GenericResponse>
+
+    @GET("verification/admin_requests.php")
+    suspend fun getAdminVerificationRequests(
+        @Query("status") status: String
+    ): Response<com.example.data.model.AdminVerificationRequestsResponse>
+
+    @FormUrlEncoded
+    @POST("verification/admin_requests.php")
+    suspend fun adminApproveVerification(
+        @Field("action") action: String = "approve",
+        @Field("request_id") requestId: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("verification/admin_requests.php")
+    suspend fun adminRejectVerification(
+        @Field("action") action: String = "reject",
+        @Field("request_id") requestId: Int,
+        @Field("reason") reason: String?
+    ): Response<GenericResponse>
+
+    // Wallet & Deposit APIs
+    @GET("wallet/get_wallet.php")
+    suspend fun getWallet(
+        @Query("user_id") userId: String
+    ): Response<com.example.data.model.WalletResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/deposit.php")
+    suspend fun submitDeposit(
+        @Field("user_id") userId: String,
+        @Field("method_id") methodId: Int,
+        @Field("method_name") methodName: String,
+        @Field("amount") amount: Double,
+        @Field("transaction_id") transactionId: String
+    ): Response<GenericResponse>
+
+    @GET("wallet/admin_methods.php")
+    suspend fun getAdminDepositMethods(): Response<com.example.data.model.DepositMethodsResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_methods.php")
+    suspend fun adminCreateDepositMethod(
+        @Field("action") action: String = "create",
+        @Field("name") name: String,
+        @Field("number") number: String,
+        @Field("image_url") imageUrl: String?,
+        @Field("description") description: String?,
+        @Field("is_active") isActive: Int = 1
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_methods.php")
+    suspend fun adminEditDepositMethod(
+        @Field("action") action: String = "edit",
+        @Field("id") id: Int,
+        @Field("name") name: String,
+        @Field("number") number: String,
+        @Field("image_url") imageUrl: String?,
+        @Field("description") description: String?,
+        @Field("is_active") isActive: Int = 1
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_methods.php")
+    suspend fun adminDeleteDepositMethod(
+        @Field("action") action: String = "delete",
+        @Field("id") id: Int
+    ): Response<GenericResponse>
+
+    @GET("wallet/admin_requests.php")
+    suspend fun getAdminDepositRequests(
+        @Query("status") status: String
+    ): Response<com.example.data.model.AdminDepositRequestsResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_requests.php")
+    suspend fun adminApproveDeposit(
+        @Field("action") action: String = "approve",
+        @Field("request_id") requestId: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_requests.php")
+    suspend fun adminRejectDeposit(
+        @Field("action") action: String = "reject",
+        @Field("request_id") requestId: Int,
+        @Field("reason") reason: String?
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/withdraw.php")
+    suspend fun submitWithdraw(
+        @Field("user_id") userId: String,
+        @Field("method_id") methodId: Int,
+        @Field("method_name") methodName: String,
+        @Field("amount") amount: Double,
+        @Field("account_name") accountName: String,
+        @Field("account_number") accountNumber: String
+    ): Response<GenericResponse>
+
+    @GET("wallet/admin_withdraw_methods.php")
+    suspend fun getAdminWithdrawMethods(): Response<com.example.data.model.WithdrawMethodsResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_withdraw_methods.php")
+    suspend fun adminCreateWithdrawMethod(
+        @Field("action") action: String = "create",
+        @Field("name") name: String,
+        @Field("number") number: String,
+        @Field("image_url") imageUrl: String?,
+        @Field("description") description: String?,
+        @Field("min_amount") minAmount: Double = 50.0,
+        @Field("max_amount") maxAmount: Double = 25000.0,
+        @Field("is_active") isActive: Int = 1
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_withdraw_methods.php")
+    suspend fun adminEditWithdrawMethod(
+        @Field("action") action: String = "edit",
+        @Field("id") id: Int,
+        @Field("name") name: String,
+        @Field("number") number: String,
+        @Field("image_url") imageUrl: String?,
+        @Field("description") description: String?,
+        @Field("min_amount") minAmount: Double = 50.0,
+        @Field("max_amount") maxAmount: Double = 25000.0,
+        @Field("is_active") isActive: Int = 1
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_withdraw_methods.php")
+    suspend fun adminDeleteWithdrawMethod(
+        @Field("action") action: String = "delete",
+        @Field("id") id: Int
+    ): Response<GenericResponse>
+
+    @GET("wallet/admin_withdraw_requests.php")
+    suspend fun getAdminWithdrawRequests(
+        @Query("tab") tab: String
+    ): Response<com.example.data.model.AdminWithdrawRequestsResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_withdraw_requests.php")
+    suspend fun adminApproveWithdraw(
+        @Field("action") action: String = "approve",
+        @Field("request_id") requestId: Int
+    ): Response<GenericResponse>
+
+    @FormUrlEncoded
+    @POST("wallet/admin_withdraw_requests.php")
+    suspend fun adminRejectWithdraw(
+        @Field("action") action: String = "reject",
+        @Field("request_id") requestId: Int,
+        @Field("reason") reason: String?
+    ): Response<GenericResponse>
+
+    @GET("dashboard/get_dashboard.php")
+    suspend fun getDashboard(
+        @Query("user_id") userId: String,
+        @Query("period") period: String = "7d"
+    ): Response<com.example.data.model.DashboardResponse>
+
+    @FormUrlEncoded
+    @POST("dashboard/submit_monetization.php")
+    suspend fun submitMonetization(
+        @Field("user_id") userId: String
+    ): Response<com.example.data.model.SubmitMonetizationResponse>
 }
 

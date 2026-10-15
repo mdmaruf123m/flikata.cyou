@@ -70,6 +70,7 @@ data class Post(
     @Json(name = "likes_count") val likesCount: Int = 0,
     @Json(name = "comments_count") val commentsCount: Int = 0,
     @Json(name = "shares_count") val sharesCount: Int = 0,
+    @Json(name = "views_count") val viewsCount: Int = 0,
     @Json(name = "is_liked") val isLiked: Boolean = false,
     val userReaction: String? = null,
     val reactions: List<Reaction> = emptyList(),
@@ -106,7 +107,9 @@ data class ChatMessage(
     @Json(name = "is_voice_message") val isVoiceMessage: Boolean = false,
     @Json(name = "is_missed_call") val isMissedCall: Boolean = false,
     @Json(name = "unread_count") val unreadCountAlt: Int = 0,
-    @Json(name = "unreadCount") val unreadCountRaw: Int = 0
+    @Json(name = "unreadCount") val unreadCountRaw: Int = 0,
+    @Json(name = "is_online") val isOnlineAlt: Boolean? = null,
+    @Json(name = "isOnline") val isOnlineRaw: Boolean? = null
 ) {
     val threadId: String get() = threadIdRaw ?: threadIdAlt ?: id
     val senderId: String get() = senderIdRaw ?: senderIdAlt ?: id
@@ -114,6 +117,7 @@ data class ChatMessage(
     val senderAvatar: String get() = senderAvatarRaw ?: senderAvatarAlt ?: ""
     val isVerified: Boolean get() = isVerifiedRaw || isVerifiedAlt
     val unreadCount: Int get() = if (unreadCountRaw > 0) unreadCountRaw else unreadCountAlt
+    val isOnline: Boolean get() = isOnlineRaw == true || isOnlineAlt == true
 }
 
 @JsonClass(generateAdapter = true)
@@ -220,6 +224,20 @@ data class GenericResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class RecordViewData(
+    @Json(name = "views_count") val viewsCount: Int = 0,
+    val counted: Boolean = false,
+    val reason: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class RecordViewResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: RecordViewData? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class CommentResponse(
     val success: Boolean = false,
     val message: String? = null,
@@ -302,6 +320,8 @@ data class UserProfileData(
     val dob: String? = null,
     @Json(name = "is_verified") val isVerified: Int? = null,
     @Json(name = "is_online") val isOnline: Int? = null,
+    @Json(name = "wallet_balance") val walletBalance: Double? = 0.0,
+    @Json(name = "verified_until") val verifiedUntil: String? = null,
     @Json(name = "posts_count") val postsCount: Int? = 0,
     @Json(name = "photos_count") val photosCount: Int? = 0,
     @Json(name = "reels_count") val reelsCount: Int? = 0,
@@ -310,6 +330,7 @@ data class UserProfileData(
     val idString: String get() = id?.toString() ?: ""
     val isVerifiedBool: Boolean get() = isVerified == 1
     val isOnlineBool: Boolean get() = isOnline == 1
+    val walletBalanceDouble: Double get() = walletBalance ?: 0.0
 }
 
 @JsonClass(generateAdapter = true)
@@ -318,4 +339,394 @@ data class UserProfileResponse(
     val message: String? = null,
     val data: UserProfileData? = null
 )
+
+@JsonClass(generateAdapter = true)
+data class InitiateCallResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: InitiateCallData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class InitiateCallData(
+    @Json(name = "call_id") val callId: Int = 0,
+    @Json(name = "channel_name") val channelName: String = "",
+    @Json(name = "caller_id") val callerId: Int = 0,
+    @Json(name = "receiver_id") val receiverId: Int = 0,
+    @Json(name = "caller_name") val callerName: String = "",
+    @Json(name = "caller_avatar") val callerAvatar: String = "",
+    @Json(name = "caller_verified") val callerVerified: Boolean = false,
+    val status: String = "ringing"
+)
+
+@JsonClass(generateAdapter = true)
+data class CheckIncomingCallResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: IncomingCallData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class IncomingCallData(
+    @Json(name = "has_call") val hasCall: Boolean = false,
+    @Json(name = "call_id") val callId: Int? = null,
+    @Json(name = "channel_name") val channelName: String? = null,
+    @Json(name = "caller_id") val callerId: Int? = null,
+    @Json(name = "receiver_id") val receiverId: Int? = null,
+    @Json(name = "caller_name") val callerName: String? = null,
+    @Json(name = "caller_avatar") val callerAvatar: String? = null,
+    @Json(name = "caller_verified") val callerVerified: Boolean? = null,
+    val status: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CallStatusResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: CallStatusData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CallStatusData(
+    @Json(name = "call_id") val callId: Int = 0,
+    val status: String = "ringing",
+    @Json(name = "channel_name") val channelName: String = "",
+    @Json(name = "duration_seconds") val durationSeconds: Int = 0
+)
+
+// --- Verification Badge Models ---
+@JsonClass(generateAdapter = true)
+data class VerificationPackage(
+    val id: Int = 0,
+    val title: String = "",
+    val description: String? = null,
+    val price: Double = 0.0,
+    @Json(name = "duration_type") val durationType: String = "month",
+    @Json(name = "duration_value") val durationValue: Int = 1,
+    @Json(name = "is_active") val isActive: Int = 1
+) {
+    val durationText: String get() {
+        return when (durationType.lowercase()) {
+            "lifetime" -> "Lifetime"
+            "day" -> if (durationValue == 1) "1 Day" else "$durationValue Days"
+            "month" -> if (durationValue == 1) "1 Month" else "$durationValue Months"
+            "year" -> if (durationValue == 1) "1 Year" else "$durationValue Years"
+            else -> "$durationValue $durationType"
+        }
+    }
+}
+
+@JsonClass(generateAdapter = true)
+data class VerificationSettings(
+    @Json(name = "id_card_required") val idCardRequired: Boolean = false,
+    @Json(name = "selfie_required") val selfieRequired: Boolean = false,
+    @Json(name = "grace_period_days") val gracePeriodDays: Int = 3
+)
+
+@JsonClass(generateAdapter = true)
+data class VerificationUserInfo(
+    val id: Int = 0,
+    @Json(name = "full_name") val fullName: String = "",
+    @Json(name = "profile_pic") val profilePic: String? = null,
+    @Json(name = "is_verified") val isVerified: Boolean = false,
+    @Json(name = "verified_until") val verifiedUntil: String? = null,
+    @Json(name = "is_lifetime") val isLifetime: Boolean = false,
+    @Json(name = "remaining_seconds") val remainingSeconds: Long = 0,
+    @Json(name = "is_grace_active") val isGraceActive: Boolean = false,
+    @Json(name = "wallet_balance") val walletBalance: Double = 0.0
+)
+
+@JsonClass(generateAdapter = true)
+data class VerificationRequestItem(
+    val id: Int = 0,
+    @Json(name = "user_id") val userId: Int? = null,
+    @Json(name = "user_name") val userName: String? = null,
+    @Json(name = "user_avatar") val userAvatar: String? = null,
+    @Json(name = "user_email") val userEmail: String? = null,
+    @Json(name = "user_phone") val userPhone: String? = null,
+    @Json(name = "package_id") val packageId: Int? = null,
+    @Json(name = "package_title") val packageTitle: String? = null,
+    val amount: Double? = 0.0,
+    @Json(name = "id_front_url") val idFrontUrl: String? = null,
+    @Json(name = "id_back_url") val idBackUrl: String? = null,
+    @Json(name = "selfie_url") val selfieUrl: String? = null,
+    val status: String = "pending",
+    @Json(name = "rejection_reason") val rejectionReason: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "duration_type") val durationType: String? = null,
+    @Json(name = "duration_value") val durationValue: Int? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class VerificationPackagesData(
+    val settings: VerificationSettings? = null,
+    val packages: List<VerificationPackage> = emptyList(),
+    val user: VerificationUserInfo? = null,
+    @Json(name = "pending_request") val pendingRequest: VerificationRequestItem? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class VerificationPackagesResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: VerificationPackagesData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminPackagesData(
+    val settings: VerificationSettings? = null,
+    val packages: List<VerificationPackage> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminPackagesResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: AdminPackagesData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class RequestCounts(
+    val pending: Int = 0,
+    val approved: Int = 0,
+    val rejected: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminVerificationRequestsData(
+    val counts: RequestCounts? = null,
+    val requests: List<VerificationRequestItem> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminVerificationRequestsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: AdminVerificationRequestsData? = null
+)
+
+// --- Wallet & Deposit Models ---
+@JsonClass(generateAdapter = true)
+data class DepositMethod(
+    val id: Int = 0,
+    val name: String = "",
+    val number: String = "",
+    @Json(name = "image_url") val imageUrl: String? = null,
+    val description: String? = null,
+    @Json(name = "is_active") val isActive: Int = 1
+)
+
+@JsonClass(generateAdapter = true)
+data class WalletTransactionItem(
+    val id: Int = 0,
+    @Json(name = "user_id") val userId: Int = 0,
+    val type: String = "deposit",
+    val amount: Double = 0.0,
+    val description: String = "",
+    val status: String = "completed",
+    @Json(name = "created_at") val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DepositRequestItem(
+    val id: Int = 0,
+    @Json(name = "user_id") val userId: Int? = null,
+    @Json(name = "user_name") val userName: String? = null,
+    @Json(name = "user_avatar") val userAvatar: String? = null,
+    @Json(name = "user_email") val userEmail: String? = null,
+    @Json(name = "user_phone") val userPhone: String? = null,
+    @Json(name = "method_id") val methodId: Int? = null,
+    @Json(name = "method_name") val methodName: String = "",
+    val amount: Double = 0.0,
+    @Json(name = "transaction_id") val transactionId: String = "",
+    val status: String = "pending",
+    @Json(name = "rejection_reason") val rejectionReason: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class WalletData(
+    @Json(name = "wallet_balance") val walletBalance: Double = 0.0,
+    @Json(name = "account_id") val accountId: String = "",
+    @Json(name = "user_name") val userName: String = "",
+    val methods: List<DepositMethod> = emptyList(),
+    @Json(name = "withdraw_methods") val withdrawMethods: List<WithdrawMethod> = emptyList(),
+    val transactions: List<WalletTransactionItem> = emptyList(),
+    @Json(name = "deposit_requests") val depositRequests: List<DepositRequestItem> = emptyList(),
+    @Json(name = "withdraw_requests") val withdrawRequests: List<WithdrawRequestItem> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class WalletResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: WalletData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DepositMethodsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: List<DepositMethod>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminDepositRequestsData(
+    val counts: RequestCounts? = null,
+    val requests: List<DepositRequestItem> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminDepositRequestsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: AdminDepositRequestsData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class WithdrawMethod(
+    val id: Int = 0,
+    val name: String = "",
+    val number: String = "",
+    @Json(name = "image_url") val imageUrl: String? = null,
+    val description: String? = null,
+    @Json(name = "min_amount") val minAmount: Double = 50.0,
+    @Json(name = "max_amount") val maxAmount: Double = 25000.0,
+    @Json(name = "is_active") val isActive: Int = 1
+)
+
+@JsonClass(generateAdapter = true)
+data class WithdrawRequestItem(
+    val id: Int = 0,
+    @Json(name = "user_id") val userId: Int? = null,
+    @Json(name = "user_name") val userName: String? = null,
+    @Json(name = "user_avatar") val userAvatar: String? = null,
+    @Json(name = "user_email") val userEmail: String? = null,
+    @Json(name = "user_phone") val userPhone: String? = null,
+    @Json(name = "method_id") val methodId: Int? = null,
+    @Json(name = "method_name") val methodName: String = "",
+    val amount: Double = 0.0,
+    @Json(name = "account_name") val accountName: String = "",
+    @Json(name = "account_number") val accountNumber: String = "",
+    val status: String = "pending",
+    @Json(name = "rejection_reason") val rejectionReason: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class WithdrawMethodsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: List<WithdrawMethod>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminWithdrawRequestsData(
+    val counts: RequestCounts? = null,
+    val requests: List<WithdrawRequestItem> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class AdminWithdrawRequestsResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: AdminWithdrawRequestsData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardPerformance(
+    @Json(name = "totalViews") val totalViews: Int = 0,
+    @Json(name = "engagement") val engagement: Int = 0,
+    @Json(name = "newFollowers") val newFollowers: Int = 0,
+    @Json(name = "totalPosts") val totalPosts: Int = 0,
+    @Json(name = "totalReels") val totalReels: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class CriterionDetail(
+    val current: Int = 0,
+    val required: Int = 0,
+    val isMet: Boolean = false,
+    val title: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class MonetizationCriteria(
+    val followers: CriterionDetail = CriterionDetail(),
+    val posts: CriterionDetail = CriterionDetail(),
+    val reels: CriterionDetail = CriterionDetail(),
+    @Json(name = "accountAge") val accountAge: CriterionDetail = CriterionDetail()
+)
+
+@JsonClass(generateAdapter = true)
+data class LastMonetizationApplication(
+    val id: String = "",
+    val status: String = "pending",
+    @Json(name = "rejectionReason") val rejectionReason: String? = null,
+    @Json(name = "createdAt") val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardMonetization(
+    @Json(name = "revenueShareText") val revenueShareText: String = "Earn 55% revenue share from ad views on your content",
+    @Json(name = "revenueSharePercent") val revenueSharePercent: Int = 55,
+    @Json(name = "isMonetized") val isMonetized: Boolean = false,
+    @Json(name = "applicationStatus") val applicationStatus: String = "none",
+    @Json(name = "allCriteriaMet") val allCriteriaMet: Boolean = false,
+    @Json(name = "fulfilledCount") val fulfilledCount: Int = 0,
+    @Json(name = "totalCriteria") val totalCriteria: Int = 4,
+    val criteria: MonetizationCriteria = MonetizationCriteria(),
+    val lastApplication: LastMonetizationApplication? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardContentItem(
+    val id: String = "",
+    val type: String = "post",
+    val content: String = "",
+    val mediaUrl: String? = null,
+    val thumbnailUrl: String? = null,
+    val viewsCount: Int = 0,
+    val likesCount: Int = 0,
+    val commentsCount: Int = 0,
+    val sharesCount: Int = 0,
+    val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardData(
+    val period: String = "7d",
+    val performance: DashboardPerformance = DashboardPerformance(),
+    val monetization: DashboardMonetization = DashboardMonetization(),
+    val recentContent: List<DashboardContentItem> = emptyList(),
+    val allContent: List<DashboardContentItem> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class DashboardResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: DashboardData? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class SubmitMonetizationData(
+    @Json(name = "application_id") val applicationId: String = "",
+    @Json(name = "user_name") val userName: String = "",
+    @Json(name = "account_age_days") val accountAgeDays: Int = 0,
+    @Json(name = "followers_count") val followersCount: Int = 0,
+    @Json(name = "posts_count") val postsCount: Int = 0,
+    @Json(name = "reels_count") val reelsCount: Int = 0,
+    @Json(name = "submission_time") val submissionTime: String = "",
+    val status: String = "pending"
+)
+
+@JsonClass(generateAdapter = true)
+data class SubmitMonetizationResponse(
+    val success: Boolean = false,
+    val message: String? = null,
+    val data: SubmitMonetizationData? = null
+)
+
+
 

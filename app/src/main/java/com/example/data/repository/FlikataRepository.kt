@@ -574,12 +574,40 @@ class FlikataRepository(
         }
     }
 
-    suspend fun recordReelView(reelId: String): Result<Boolean> {
+    suspend fun recordReelView(reelId: String): Result<com.example.data.model.RecordViewData?> {
         val user = userDao.getLoggedInUser()
+        val userId = user?.id?.removePrefix("user_")?.trim() ?: ApiClient.currentUserId?.removePrefix("user_")?.trim()
         return try {
-            val resp = ApiClient.apiService.recordReelView(reelId, user?.id)
+            if (reelId.startsWith("post_")) {
+                val cleanPostId = reelId.removePrefix("post_").trim()
+                val resp = ApiClient.apiService.recordPostView(cleanPostId, userId)
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    Result.success(resp.body()?.data)
+                } else {
+                    Result.failure(Exception("Failed to record view"))
+                }
+            } else {
+                val cleanReelId = reelId.removePrefix("reel_").trim()
+                val resp = ApiClient.apiService.recordReelView(cleanReelId, userId)
+                if (resp.isSuccessful && resp.body()?.success == true) {
+                    Result.success(resp.body()?.data)
+                } else {
+                    Result.failure(Exception("Failed to record view"))
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun recordPostView(postId: String): Result<com.example.data.model.RecordViewData?> {
+        val user = userDao.getLoggedInUser()
+        val userId = user?.id?.removePrefix("user_")?.trim() ?: ApiClient.currentUserId?.removePrefix("user_")?.trim()
+        val cleanPostId = postId.removePrefix("post_").trim()
+        return try {
+            val resp = ApiClient.apiService.recordPostView(cleanPostId, userId)
             if (resp.isSuccessful && resp.body()?.success == true) {
-                Result.success(true)
+                Result.success(resp.body()?.data)
             } else {
                 Result.failure(Exception("Failed to record view"))
             }
@@ -794,6 +822,589 @@ class FlikataRepository(
 
     suspend fun updateUserLocal(user: User) {
         userDao.insertUser(user.toEntity(isLoggedIn = true))
+    }
+
+    suspend fun initiateCall(receiverId: String): Result<com.example.data.model.InitiateCallData> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val resp = ApiClient.apiService.initiateCall(callerId = uid, receiverId = receiverId)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                val msg = resp.body()?.message ?: "Offline"
+                Result.failure(Exception(msg))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun checkIncomingCall(): com.example.data.model.IncomingCallData? {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        if (uid.isBlank()) return null
+        return try {
+            val resp = ApiClient.apiService.checkIncomingCall(userId = uid)
+            if (resp.isSuccessful && resp.body()?.data?.hasCall == true) {
+                resp.body()!!.data
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun getCallStatus(callId: Int): com.example.data.model.CallStatusData? {
+        return try {
+            val resp = ApiClient.apiService.getCallStatus(callId = callId)
+            if (resp.isSuccessful) resp.body()?.data else null
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun answerCall(callId: Int): Boolean {
+        return try {
+            val resp = ApiClient.apiService.answerCall(callId = callId)
+            resp.isSuccessful && resp.body()?.success == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun endCall(callId: Int, reason: String = "ended", duration: Int = 0): Boolean {
+        return try {
+            val resp = ApiClient.apiService.endCall(callId = callId, reason = reason, duration = duration)
+            resp.isSuccessful && resp.body()?.success == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // --- Verification & Wallet Methods ---
+    suspend fun getVerificationPackages(): Result<com.example.data.model.VerificationPackagesData> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val resp = ApiClient.apiService.getVerificationPackages(userId = uid)
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load packages"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitVerificationRequest(
+        packageId: Int,
+        idFrontUrl: String?,
+        idBackUrl: String?,
+        selfieUrl: String?
+    ): Result<String> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val resp = ApiClient.apiService.submitVerificationRequest(
+                userId = uid,
+                packageId = packageId,
+                idFrontUrl = idFrontUrl,
+                idBackUrl = idBackUrl,
+                selfieUrl = selfieUrl
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(resp.body()?.message ?: "Request submitted successfully")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Submission failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getWallet(): Result<com.example.data.model.WalletData> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val resp = ApiClient.apiService.getWallet(userId = uid)
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load wallet"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitDeposit(
+        methodId: Int,
+        methodName: String,
+        amount: Double,
+        transactionId: String
+    ): Result<String> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val resp = ApiClient.apiService.submitDeposit(
+                userId = uid,
+                methodId = methodId,
+                methodName = methodName,
+                amount = amount,
+                transactionId = transactionId
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(resp.body()?.message ?: "Deposit request submitted")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Deposit failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Admin APIs
+    suspend fun getAdminPackages(): Result<com.example.data.model.AdminPackagesData> {
+        return try {
+            val resp = ApiClient.apiService.getAdminPackages()
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load admin packages"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminCreatePackage(
+        title: String,
+        description: String?,
+        price: Double,
+        durationType: String,
+        durationValue: Int
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminCreatePackage(
+                title = title,
+                description = description,
+                price = price,
+                durationType = durationType,
+                durationValue = durationValue
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(resp.body()?.message ?: "Package created")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Create package failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminEditPackage(
+        id: Int,
+        title: String,
+        description: String?,
+        price: Double,
+        durationType: String,
+        durationValue: Int
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminEditPackage(
+                id = id,
+                title = title,
+                description = description,
+                price = price,
+                durationType = durationType,
+                durationValue = durationValue
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(resp.body()?.message ?: "Package updated")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Update package failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminDeletePackage(id: Int): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminDeletePackage(id = id)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Package deleted")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Delete package failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminSaveVerificationSettings(
+        idCardRequired: Boolean,
+        selfieRequired: Boolean,
+        gracePeriodDays: Int
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminSaveVerificationSettings(
+                idCardRequired = if (idCardRequired) 1 else 0,
+                selfieRequired = if (selfieRequired) 1 else 0,
+                gracePeriodDays = gracePeriodDays
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Settings saved")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to save settings"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminVerificationRequests(status: String): Result<com.example.data.model.AdminVerificationRequestsData> {
+        return try {
+            val resp = ApiClient.apiService.getAdminVerificationRequests(status = status)
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load requests"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminApproveVerification(requestId: Int): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminApproveVerification(requestId = requestId)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Approved")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Approve failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminRejectVerification(requestId: Int, reason: String?): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminRejectVerification(requestId = requestId, reason = reason)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Rejected")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Reject failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminDepositMethods(): Result<List<com.example.data.model.DepositMethod>> {
+        return try {
+            val resp = ApiClient.apiService.getAdminDepositMethods()
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load methods"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminCreateDepositMethod(
+        name: String,
+        number: String,
+        imageUrl: String?,
+        description: String?,
+        isActive: Int = 1
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminCreateDepositMethod(
+                name = name,
+                number = number,
+                imageUrl = imageUrl,
+                description = description,
+                isActive = isActive
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Method created")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Create method failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminEditDepositMethod(
+        id: Int,
+        name: String,
+        number: String,
+        imageUrl: String?,
+        description: String?,
+        isActive: Int = 1
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminEditDepositMethod(
+                id = id,
+                name = name,
+                number = number,
+                imageUrl = imageUrl,
+                description = description,
+                isActive = isActive
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Method updated")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Update method failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminDeleteDepositMethod(id: Int): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminDeleteDepositMethod(id = id)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Method deleted")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Delete method failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminDepositRequests(status: String): Result<com.example.data.model.AdminDepositRequestsData> {
+        return try {
+            val resp = ApiClient.apiService.getAdminDepositRequests(status = status)
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load deposit requests"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminApproveDeposit(requestId: Int): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminApproveDeposit(requestId = requestId)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Deposit approved")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Approve failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminRejectDeposit(requestId: Int, reason: String?): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminRejectDeposit(requestId = requestId, reason = reason)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Deposit rejected")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Reject failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitWithdraw(
+        methodId: Int,
+        methodName: String,
+        amount: Double,
+        accountName: String,
+        accountNumber: String
+    ): Result<String> {
+        val user = userDao.getLoggedInUser()
+        val uid = user?.id ?: ApiClient.currentUserId ?: ""
+        return try {
+            val resp = ApiClient.apiService.submitWithdraw(
+                userId = uid,
+                methodId = methodId,
+                methodName = methodName,
+                amount = amount,
+                accountName = accountName,
+                accountNumber = accountNumber
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success(resp.body()?.message ?: "Withdrawal request submitted")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Withdrawal failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminWithdrawMethods(): Result<List<com.example.data.model.WithdrawMethod>> {
+        return try {
+            val resp = ApiClient.apiService.getAdminWithdrawMethods()
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load withdraw methods"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminCreateWithdrawMethod(
+        name: String,
+        number: String,
+        imageUrl: String?,
+        description: String?,
+        minAmount: Double = 50.0,
+        maxAmount: Double = 25000.0,
+        isActive: Int = 1
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminCreateWithdrawMethod(
+                name = name,
+                number = number,
+                imageUrl = imageUrl,
+                description = description,
+                minAmount = minAmount,
+                maxAmount = maxAmount,
+                isActive = isActive
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Method created")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Create method failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminEditWithdrawMethod(
+        id: Int,
+        name: String,
+        number: String,
+        imageUrl: String?,
+        description: String?,
+        minAmount: Double = 50.0,
+        maxAmount: Double = 25000.0,
+        isActive: Int = 1
+    ): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminEditWithdrawMethod(
+                id = id,
+                name = name,
+                number = number,
+                imageUrl = imageUrl,
+                description = description,
+                minAmount = minAmount,
+                maxAmount = maxAmount,
+                isActive = isActive
+            )
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Method updated")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Update method failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminDeleteWithdrawMethod(id: Int): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminDeleteWithdrawMethod(id = id)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Method deleted")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Delete method failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getAdminWithdrawRequests(status: String): Result<com.example.data.model.AdminWithdrawRequestsData> {
+        return try {
+            val resp = ApiClient.apiService.getAdminWithdrawRequests(tab = status)
+            if (resp.isSuccessful && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load withdraw requests"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminApproveWithdraw(requestId: Int): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminApproveWithdraw(requestId = requestId)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Withdraw approved")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Approve failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun adminRejectWithdraw(requestId: Int, reason: String?): Result<String> {
+        return try {
+            val resp = ApiClient.apiService.adminRejectWithdraw(requestId = requestId, reason = reason)
+            if (resp.isSuccessful && resp.body()?.success == true) {
+                Result.success("Withdraw rejected")
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Reject failed"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getDashboardData(userId: String, period: String = "7d"): Result<com.example.data.model.DashboardData> {
+        return try {
+            val user = userDao.getLoggedInUser()?.toModel()
+            val effectiveUserId = userId.ifBlank { user?.id ?: ApiClient.currentUserId ?: "1" }
+            val cleanId = effectiveUserId.removePrefix("user_").trim().ifBlank { "1" }
+            val resp = ApiClient.apiService.getDashboard(userId = cleanId, period = period)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to load dashboard data"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun submitMonetization(userId: String): Result<com.example.data.model.SubmitMonetizationData> {
+        return try {
+            val user = userDao.getLoggedInUser()?.toModel()
+            val effectiveUserId = userId.ifBlank { user?.id ?: ApiClient.currentUserId ?: "1" }
+            val cleanId = effectiveUserId.removePrefix("user_").trim().ifBlank { "1" }
+            val resp = ApiClient.apiService.submitMonetization(userId = cleanId)
+            if (resp.isSuccessful && resp.body()?.success == true && resp.body()?.data != null) {
+                Result.success(resp.body()!!.data!!)
+            } else {
+                Result.failure(Exception(resp.body()?.message ?: "Failed to submit monetization request"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 }
 

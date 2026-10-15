@@ -42,7 +42,14 @@ enum class Screen {
     FULL_IMAGE_VIEWER,
     NOTIFICATIONS,
     MENU,
-    FRIENDS
+    FRIENDS,
+    VERIFIED_BADGE,
+    WALLET,
+    DEPOSIT,
+    WITHDRAW,
+    ADMIN_PANEL,
+    MARKETPLACE,
+    DASHBOARD
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -57,9 +64,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val selectedUserProfileData = MutableStateFlow<com.example.data.model.UserProfileData?>(null)
     val targetReelId = MutableStateFlow<String?>(null)
 
+    val dashboardData = MutableStateFlow<com.example.data.model.DashboardData?>(null)
+    val isLoadingDashboard = MutableStateFlow(false)
+    val dashboardPeriod = MutableStateFlow("7d")
+
+    val audioCallManager by lazy { com.example.data.audio.AudioCallManager(application) }
+    val incomingCallState = MutableStateFlow<com.example.data.model.IncomingCallData?>(null)
+    val activeCallState = MutableStateFlow<ActiveCallState?>(null)
+    private var callPollingJob: kotlinx.coroutines.Job? = null
+
+    fun loadDashboard(period: String = dashboardPeriod.value) {
+        dashboardPeriod.value = period
+        viewModelScope.launch {
+            isLoadingDashboard.value = true
+            val user = currentUser.value ?: repository.getLoggedInUserDirect()
+            val effectiveUserId = user?.id?.removePrefix("user_")?.trim()?.ifBlank { null } ?: "1"
+            val res = repository.getDashboardData(userId = effectiveUserId, period = period)
+            if (res.isSuccess) {
+                dashboardData.value = res.getOrNull()
+            }
+            isLoadingDashboard.value = false
+        }
+    }
+
+    suspend fun submitMonetization(): Result<com.example.data.model.SubmitMonetizationData> {
+        val user = currentUser.value ?: repository.getLoggedInUserDirect()
+        val effectiveUserId = user?.id?.removePrefix("user_")?.trim()?.ifBlank { null } ?: "1"
+        val res = repository.submitMonetization(userId = effectiveUserId)
+        if (res.isSuccess) {
+            // Reload dashboard to reflect pending application
+            loadDashboard(dashboardPeriod.value)
+        }
+        return res
+    }
+
     fun openPost(postId: String) {
         highlightedPostId.value = postId
-        _currentScreen.value = Screen.HOME
+        navigateTo(Screen.HOME)
     }
 
     fun clearHighlightedPost() {
@@ -73,7 +114,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             selectedUserProfileId.value = null
             selectedUserProfileName.value = null
             selectedUserProfileData.value = null
-            _currentScreen.value = Screen.PROFILE
+            navigateTo(Screen.PROFILE)
         } else {
             selectedUserProfileId.value = clean.ifBlank { null }
             selectedUserProfileName.value = userName.ifBlank { null }
@@ -90,7 +131,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
-            _currentScreen.value = Screen.PROFILE
+            navigateTo(Screen.PROFILE)
         }
     }
 
@@ -102,7 +143,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openReel(reelId: String) {
         targetReelId.value = reelId
-        _currentScreen.value = Screen.REELS
+        navigateTo(Screen.REELS)
     }
 
     val homeListState = LazyListState()
@@ -141,6 +182,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val uid = currentUser.value?.id
                 if (!uid.isNullOrBlank()) {
                     repository.syncChatsFromServer(uid)
+                }
+            }
+        }
+
+        // Continuous polling for incoming audio calls
+        viewModelScope.launch {
+            while (true) {
+                delay(2000)
+                try {
+                    val uid = currentUser.value?.id
+                    if (!uid.isNullOrBlank() && activeCallState.value == null) {
+                        val incoming = repository.checkIncomingCall()
+                        if (incoming != null && incoming.hasCall && incoming.callId != null && incoming.status == "ringing") {
+                            if (incomingCallState.value?.callId != incoming.callId) {
+                                incomingCallState.value = incoming
+                                audioCallManager.startRinging(isIncoming = true)
+                            }
+                        } else {
+                            if (incomingCallState.value != null) {
+                                audioCallManager.stopRinging()
+                                incomingCallState.value = null
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore polling network errors
                 }
             }
         }
@@ -514,9 +581,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun recordReelView(reelId: String) {
+    fun recordReelView(reelId: String, onResult: ((Int) -> Unit)? = null) {
         viewModelScope.launch {
-            repository.recordReelView(reelId)
+            val res = repository.recordReelView(reelId)
+            if (res.isSuccess) {
+                val data = res.getOrNull()
+                if (data != null) {
+                    onResult?.invoke(data.viewsCount)
+                }
+            }
         }
     }
 
@@ -666,16 +739,57 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var _previousScreen: Screen = Screen.HOME
+    val previousScreen: Screen get() = _previousScreen
+
+    private val _screenBackStack = mutableListOf<Screen>()
+    val screenBackStack: List<Screen> get() = _screenBackStack.toList()
+
     fun navigateTo(screen: Screen) {
-        if (screen == Screen.PROFILE) {
+        if (screen == _currentScreen.value) return
+
+        val current = _currentScreen.value
+        if (current != Screen.SPLASH && current != Screen.LOGIN && current != Screen.REGISTER && current != Screen.FORGOT_PASSWORD) {
+            if (_screenBackStack.isNotEmpty() && _screenBackStack.last() == screen) {
+                _screenBackStack.removeAt(_screenBackStack.size - 1)
+            } else {
+                _screenBackStack.add(current)
+            }
+        }
+        _previousScreen = current
+
+        if (screen == Screen.PROFILE && selectedUserProfileId.value == null) {
             clearSelectedUserProfile()
         }
         _currentScreen.value = screen
     }
 
+    fun navigateBack(): Boolean {
+        if (fullScreenImageUrl.value != null) {
+            fullScreenImageUrl.value = null
+        }
+
+        if (_screenBackStack.isNotEmpty()) {
+            val prev = _screenBackStack.removeAt(_screenBackStack.size - 1)
+            if (_currentScreen.value == Screen.PROFILE && selectedUserProfileId.value != null) {
+                clearSelectedUserProfile()
+            }
+            _previousScreen = _currentScreen.value
+            _currentScreen.value = prev
+            return true
+        } else {
+            if (_currentScreen.value != Screen.HOME && _currentScreen.value != Screen.LOGIN && _currentScreen.value != Screen.SPLASH) {
+                _previousScreen = _currentScreen.value
+                _currentScreen.value = Screen.HOME
+                return true
+            }
+            return false
+        }
+    }
+
     fun openChatDetail(chat: ChatMessage) {
         _selectedChat.value = chat
-        _currentScreen.value = Screen.CHAT_DETAIL
+        navigateTo(Screen.CHAT_DETAIL)
     }
 
     fun openChatWithUser(name: String, avatar: String, isVerified: Boolean = false, userId: String? = null) {
@@ -717,7 +831,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             _selectedChat.value = newChat
         }
-        _currentScreen.value = Screen.CHAT_DETAIL
+        navigateTo(Screen.CHAT_DETAIL)
     }
 
 
@@ -729,12 +843,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openImageViewer(imageUrl: String) {
         fullScreenImageUrl.value = imageUrl
-        _currentScreen.value = Screen.FULL_IMAGE_VIEWER
+        navigateTo(Screen.FULL_IMAGE_VIEWER)
     }
 
     fun openStoryViewer(storyIndex: Int) {
         activeStoryIndex.value = storyIndex
-        _currentScreen.value = Screen.STORY_VIEWER
+        navigateTo(Screen.STORY_VIEWER)
     }
 
     fun prepareEditProfile() {
@@ -749,7 +863,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             editEmail.value = if (user.emailOrPhone.contains("@")) user.emailOrPhone else "marufma143g@gmail.com"
             editPhone.value = if (!user.emailOrPhone.contains("@")) user.emailOrPhone else ""
         }
-        _currentScreen.value = Screen.EDIT_PROFILE
+        navigateTo(Screen.EDIT_PROFILE)
     }
 
     fun saveProfileChanges() {
@@ -1149,7 +1263,125 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun logout() {
         viewModelScope.launch {
             repository.logout()
+            _screenBackStack.clear()
             _currentScreen.value = Screen.LOGIN
+        }
+    }
+
+    fun startAudioCall(partnerId: Int, partnerName: String, partnerAvatar: String?, isVerified: Boolean) {
+        viewModelScope.launch {
+            val myId = currentUser.value?.id?.toIntOrNull() ?: 1
+            val res = repository.initiateCall(partnerId.toString())
+            if (res.isSuccess) {
+                val callData = res.getOrNull()!!
+                val callId = callData.callId
+                activeCallState.value = ActiveCallState(
+                    callId = callId,
+                    partnerId = partnerId,
+                    partnerName = partnerName,
+                    partnerAvatar = partnerAvatar,
+                    isVerified = isVerified,
+                    isCaller = true,
+                    status = "ringing",
+                    durationSeconds = 0
+                )
+                audioCallManager.startRinging(isIncoming = false)
+
+                callPollingJob?.cancel()
+                callPollingJob = viewModelScope.launch {
+                    var streamStarted = false
+                    while (activeCallState.value?.callId == callId) {
+                        delay(1200)
+                        val statusData = repository.getCallStatus(callId)
+                        val st = statusData?.status ?: "ringing"
+                        if (st == "connected") {
+                            if (!streamStarted) {
+                                streamStarted = true
+                                audioCallManager.stopRinging()
+                                audioCallManager.startAudioStream(callId, myId, partnerId)
+                            }
+                            activeCallState.value = activeCallState.value?.copy(
+                                status = "connected",
+                                durationSeconds = (activeCallState.value?.durationSeconds ?: 0) + 1
+                            )
+                        } else if (st in listOf("declined", "ended", "missed")) {
+                            audioCallManager.stopAudioCall()
+                            activeCallState.value = null
+                            break
+                        }
+                    }
+                }
+            } else {
+                val err = res.exceptionOrNull()?.message ?: ""
+                val msg = if (err.contains("offline", ignoreCase = true)) "Offline" else err.ifBlank { "Offline" }
+                android.widget.Toast.makeText(getApplication(), msg, android.widget.Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun acceptIncomingCall() {
+        val inc = incomingCallState.value ?: return
+        val callId = inc.callId ?: return
+        val callerId = inc.callerId ?: return
+        audioCallManager.stopRinging()
+        incomingCallState.value = null
+
+        viewModelScope.launch {
+            repository.answerCall(callId)
+            val myId = currentUser.value?.id?.toIntOrNull() ?: 1
+
+            activeCallState.value = ActiveCallState(
+                callId = callId,
+                partnerId = callerId,
+                partnerName = inc.callerName ?: "User",
+                partnerAvatar = inc.callerAvatar,
+                isVerified = inc.callerVerified == true,
+                isCaller = false,
+                status = "connected",
+                durationSeconds = 0
+            )
+
+            audioCallManager.startAudioStream(callId, myId, callerId)
+
+            callPollingJob?.cancel()
+            callPollingJob = viewModelScope.launch {
+                while (activeCallState.value?.callId == callId) {
+                    delay(1000)
+                    activeCallState.value = activeCallState.value?.copy(
+                        durationSeconds = (activeCallState.value?.durationSeconds ?: 0) + 1
+                    )
+                    if ((activeCallState.value?.durationSeconds ?: 0) % 2 == 0) {
+                        val statusData = repository.getCallStatus(callId)
+                        if (statusData?.status in listOf("ended", "declined", "missed")) {
+                            audioCallManager.stopAudioCall()
+                            activeCallState.value = null
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun declineIncomingCall() {
+        val inc = incomingCallState.value ?: return
+        val callId = inc.callId ?: return
+        audioCallManager.stopRinging()
+        incomingCallState.value = null
+        viewModelScope.launch {
+            repository.endCall(callId, reason = "declined")
+        }
+    }
+
+    fun endActiveCall() {
+        val current = activeCallState.value ?: return
+        val callId = current.callId
+        val duration = current.durationSeconds
+        callPollingJob?.cancel()
+        audioCallManager.stopAudioCall()
+        activeCallState.value = null
+        viewModelScope.launch {
+            repository.endCall(callId, reason = "ended", duration = duration)
         }
     }
 }

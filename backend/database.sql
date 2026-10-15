@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS `users` (
   `gender` VARCHAR(20) DEFAULT 'Male',
   `dob` DATE DEFAULT NULL,
   `is_verified` TINYINT(1) DEFAULT 0,
+  `verified_until` DATETIME DEFAULT NULL,
+  `wallet_balance` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `is_monetized` TINYINT(1) DEFAULT 0,
+  `followers_count` INT NOT NULL DEFAULT 0,
+  `following_count` INT NOT NULL DEFAULT 0,
   `is_banned` TINYINT(1) DEFAULT 0,
   `is_online` TINYINT(1) DEFAULT 1,
   `auth_token` VARCHAR(255) DEFAULT NULL,
@@ -27,6 +32,17 @@ CREATE TABLE IF NOT EXISTS `users` (
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY `idx_email` (`email`),
   UNIQUE KEY `idx_phone` (`phone`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 1.1 Follows Table (Followers and Following)
+CREATE TABLE IF NOT EXISTS `follows` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `follower_id` INT NOT NULL,
+  `following_id` INT NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_follow_unique` (`follower_id`, `following_id`),
+  FOREIGN KEY (`follower_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`following_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 2. Cloudflare R2 Buckets Management Table
@@ -59,6 +75,7 @@ CREATE TABLE IF NOT EXISTS `posts` (
   `likes_count` INT DEFAULT 0,
   `comments_count` INT DEFAULT 0,
   `shares_count` INT DEFAULT 0,
+  `views_count` INT NOT NULL DEFAULT 0,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
@@ -244,5 +261,206 @@ INSERT INTO `admins` (`id`, `name`, `email`, `password_hash`)
 VALUES (1, 'Super Admin', 'admin@gmail.com', '11223344')
 ON DUPLICATE KEY UPDATE `email` = 'admin@gmail.com';
 
+-- 18. Calls Table (Audio Call Signalling & Records)
+CREATE TABLE IF NOT EXISTS `calls` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `caller_id` INT NOT NULL,
+  `receiver_id` INT NOT NULL,
+  `channel_name` VARCHAR(100) NOT NULL,
+  `status` ENUM('ringing', 'connected', 'declined', 'ended', 'missed') DEFAULT 'ringing',
+  `duration_seconds` INT DEFAULT 0,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX (`caller_id`),
+  INDEX (`receiver_id`),
+  INDEX (`status`),
+  FOREIGN KEY (`caller_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`receiver_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 19. Verification Packages Table
+CREATE TABLE IF NOT EXISTS `verification_packages` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `title` VARCHAR(150) NOT NULL,
+  `description` TEXT DEFAULT NULL,
+  `price` DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  `duration_type` ENUM('day', 'month', 'year', 'lifetime') DEFAULT 'month',
+  `duration_value` INT NOT NULL DEFAULT 1,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 20. Verification Settings Table
+CREATE TABLE IF NOT EXISTS `verification_settings` (
+  `id` INT PRIMARY KEY DEFAULT 1,
+  `id_card_required` TINYINT(1) DEFAULT 0,
+  `selfie_required` TINYINT(1) DEFAULT 0,
+  `grace_period_days` INT DEFAULT 3,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `verification_settings` (`id`, `id_card_required`, `selfie_required`, `grace_period_days`)
+VALUES (1, 0, 0, 3)
+ON DUPLICATE KEY UPDATE `id` = 1;
+
+-- 21. Verification Requests Table
+CREATE TABLE IF NOT EXISTS `verification_requests` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `package_id` INT NOT NULL,
+  `package_title` VARCHAR(150) DEFAULT NULL,
+  `amount` DECIMAL(10,2) DEFAULT 0.00,
+  `id_front_url` VARCHAR(500) DEFAULT NULL,
+  `id_back_url` VARCHAR(500) DEFAULT NULL,
+  `selfie_url` VARCHAR(500) DEFAULT NULL,
+  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  `rejection_reason` TEXT DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX (`user_id`),
+  INDEX (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 22. Deposit Payment Methods Table
+CREATE TABLE IF NOT EXISTS `deposit_methods` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL,
+  `number` VARCHAR(100) NOT NULL,
+  `image_url` VARCHAR(500) DEFAULT NULL,
+  `description` TEXT DEFAULT NULL,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `deposit_methods` (`id`, `name`, `number`, `image_url`, `description`)
+VALUES 
+  (1, 'bKash Personal', '01700000000', 'https://images.unsplash.com/photo-1559526324-4b87b5e36e44?w=150', 'Send money to personal number, copy transaction ID and submit.'),
+  (2, 'Nagad Personal', '01800000000', 'https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=150', 'Send money to personal number, copy transaction ID and submit.'),
+  (3, 'Rocket', '019000000009', 'https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=150', 'Send money to 12 digit personal number and enter transaction ID.')
+ON DUPLICATE KEY UPDATE `id` = `id`;
+
+-- 23. Deposit Requests Table
+CREATE TABLE IF NOT EXISTS `deposit_requests` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `method_id` INT NOT NULL,
+  `method_name` VARCHAR(100) NOT NULL,
+  `amount` DECIMAL(10,2) NOT NULL,
+  `transaction_id` VARCHAR(150) NOT NULL,
+  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  `rejection_reason` TEXT DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX (`user_id`),
+  INDEX (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 24. Wallet Transactions Table
+CREATE TABLE IF NOT EXISTS `wallet_transactions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `type` VARCHAR(50) NOT NULL,
+  `amount` DECIMAL(10,2) NOT NULL,
+  `description` VARCHAR(255) NOT NULL,
+  `status` VARCHAR(50) DEFAULT 'completed',
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  INDEX (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 25. Withdraw Payment Methods Table
+CREATE TABLE IF NOT EXISTS `withdraw_methods` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(100) NOT NULL,
+  `number` VARCHAR(100) NOT NULL,
+  `image_url` VARCHAR(500) DEFAULT NULL,
+  `description` TEXT DEFAULT NULL,
+  `min_amount` DECIMAL(10,2) DEFAULT 50.00,
+  `max_amount` DECIMAL(10,2) DEFAULT 25000.00,
+  `is_active` TINYINT(1) DEFAULT 1,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `withdraw_methods` (`id`, `name`, `number`, `image_url`, `description`, `min_amount`, `max_amount`)
+VALUES 
+  (1, 'bKash Personal', '01700000000', '', 'Withdraw to personal bKash number. Minimum ৳ 50, Maximum ৳ 25,000.', 50.00, 25000.00),
+  (2, 'Nagad Personal', '01800000000', '', 'Withdraw to personal Nagad number. Minimum ৳ 50, Maximum ৳ 25,000.', 50.00, 25000.00),
+  (3, 'Rocket Personal', '01900000000', '', 'Withdraw to 12 digit Rocket number. Minimum ৳ 50, Maximum ৳ 25,000.', 50.00, 25000.00),
+  (4, 'Bank Transfer', 'Bank Info', '', 'Provide your Bank Name, Branch, Account Holder Name, and Account Number.', 500.00, 50000.00)
+ON DUPLICATE KEY UPDATE `id` = `id`;
+
+-- 26. Withdraw Requests Table
+CREATE TABLE IF NOT EXISTS `withdraw_requests` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `method_id` INT NOT NULL,
+  `method_name` VARCHAR(100) NOT NULL,
+  `amount` DECIMAL(10,2) NOT NULL,
+  `account_name` VARCHAR(150) NOT NULL,
+  `account_number` VARCHAR(100) NOT NULL,
+  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  `rejection_reason` TEXT DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX (`user_id`),
+  INDEX (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 27. Reel Views Table (Unique views, prevent self-views)
+CREATE TABLE IF NOT EXISTS `reel_views` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `reel_id` INT NOT NULL,
+  `user_id` INT NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_reel_user_view` (`reel_id`, `user_id`),
+  INDEX (`reel_id`),
+  INDEX (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 28. Post Views Table (Unique views, prevent self-views)
+CREATE TABLE IF NOT EXISTS `post_views` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `post_id` INT NOT NULL,
+  `user_id` INT NOT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `idx_post_user_view` (`post_id`, `user_id`),
+  INDEX (`post_id`),
+  INDEX (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 29. Monetization Settings Table
+CREATE TABLE IF NOT EXISTS `monetization_settings` (
+  `id` INT PRIMARY KEY DEFAULT 1,
+  `min_followers` INT DEFAULT 1000,
+  `min_posts` INT DEFAULT 10,
+  `min_reels` INT DEFAULT 5,
+  `min_account_age_days` INT DEFAULT 30,
+  `dashboard_posts_limit` INT DEFAULT 5,
+  `revenue_share_percent` INT DEFAULT 55,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO `monetization_settings` (`id`, `min_followers`, `min_posts`, `min_reels`, `min_account_age_days`, `dashboard_posts_limit`, `revenue_share_percent`) 
+VALUES (1, 1000, 10, 5, 30, 5, 55);
+
+-- 30. Monetization Applications Table
+CREATE TABLE IF NOT EXISTS `monetization_requests` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `followers_count` INT DEFAULT 0,
+  `posts_count` INT DEFAULT 0,
+  `reels_count` INT DEFAULT 0,
+  `account_age_days` INT DEFAULT 0,
+  `status` ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+  `rejection_reason` TEXT DEFAULT NULL,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX (`user_id`),
+  INDEX (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
+
 

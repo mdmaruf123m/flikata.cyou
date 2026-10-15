@@ -31,6 +31,8 @@ function getDB() {
         ];
         try {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
+            require_once __DIR__ . '/schema_update.php';
+            ensureVerificationAndWalletSchema($pdo);
         } catch (PDOException $e) {
             echo json_encode([
                 'success' => false,

@@ -23,6 +23,8 @@ import com.example.ui.screens.auth.LoginScreen
 import com.example.ui.screens.auth.RegisterScreen
 import com.example.ui.screens.chats.ChatDetailScreen
 import com.example.ui.screens.chats.ChatsScreen
+import com.example.ui.screens.chats.IncomingCallOverlay
+import com.example.ui.screens.chats.ActiveAudioCallOverlay
 import com.example.ui.screens.createpost.CreatePostScreen
 import com.example.ui.screens.friends.FriendsScreen
 import com.example.ui.screens.home.HomeScreen
@@ -36,6 +38,13 @@ import com.example.ui.screens.splash.SplashScreen
 import com.example.ui.screens.story.CreateStoryScreen
 import com.example.ui.screens.story.StoryViewerScreen
 import com.example.ui.screens.viewer.FullImageViewerScreen
+import com.example.ui.screens.admin.AdminPanelScreen
+import com.example.ui.screens.dashboard.DashboardScreen
+import com.example.ui.screens.marketplace.MarketplaceScreen
+import com.example.ui.screens.verified.VerifiedBadgeScreen
+import com.example.ui.screens.wallet.DepositScreen
+import com.example.ui.screens.wallet.WalletScreen
+import com.example.ui.screens.wallet.WithdrawScreen
 import com.example.ui.theme.FlikataBackground
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.viewmodel.MainViewModel
@@ -135,20 +144,10 @@ fun MainAppContent(viewModel: MainViewModel) {
     val activeStoryIndex by viewModel.activeStoryIndex.collectAsState()
     val stories by viewModel.stories.collectAsState()
 
-    // Handle back button behavior
+    // Handle back button behavior globally via stack
     if (currentScreen != Screen.HOME && currentScreen != Screen.LOGIN && currentScreen != Screen.SPLASH) {
         BackHandler {
-            when (currentScreen) {
-                Screen.REGISTER -> viewModel.navigateTo(Screen.LOGIN)
-                Screen.FORGOT_PASSWORD -> viewModel.navigateTo(Screen.LOGIN)
-                Screen.CHAT_DETAIL -> viewModel.navigateTo(Screen.CHATS)
-                Screen.EDIT_PROFILE -> viewModel.navigateTo(Screen.PROFILE)
-                Screen.SEARCH -> viewModel.navigateTo(Screen.HOME)
-                Screen.CREATE_STORY -> viewModel.navigateTo(Screen.HOME)
-                Screen.NOTIFICATIONS -> viewModel.navigateTo(Screen.HOME)
-                Screen.FRIENDS -> viewModel.navigateTo(Screen.HOME)
-                else -> viewModel.navigateTo(Screen.HOME)
-            }
+            viewModel.navigateBack()
         }
     }
 
@@ -179,12 +178,12 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.FORGOT_PASSWORD -> ForgotPasswordScreen(
                     viewModel = viewModel,
-                    onNavigateBack = { viewModel.navigateTo(Screen.LOGIN) }
+                    onNavigateBack = { viewModel.navigateBack() }
                 )
 
                 Screen.REGISTER -> RegisterScreen(
                     viewModel = viewModel,
-                    onNavigateBack = { viewModel.navigateTo(Screen.LOGIN) }
+                    onNavigateBack = { viewModel.navigateBack() }
                 )
 
                 Screen.HOME -> HomeScreen(
@@ -200,12 +199,12 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.CREATE_POST -> CreatePostScreen(
                     viewModel = viewModel,
-                    onClose = { viewModel.navigateTo(Screen.HOME) }
+                    onClose = { viewModel.navigateBack() }
                 )
 
                 Screen.CREATE_STORY -> CreateStoryScreen(
                     viewModel = viewModel,
-                    onClose = { viewModel.navigateTo(Screen.HOME) }
+                    onClose = { viewModel.navigateBack() }
                 )
 
                 Screen.CHATS -> ChatsScreen(
@@ -215,12 +214,12 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.CHAT_DETAIL -> ChatDetailScreen(
                     viewModel = viewModel,
-                    onBack = { viewModel.navigateTo(Screen.CHATS) }
+                    onBack = { viewModel.navigateBack() }
                 )
 
                 Screen.PROFILE -> ProfileScreen(
                     viewModel = viewModel,
-                    onBack = { viewModel.navigateTo(Screen.HOME) },
+                    onBack = { viewModel.navigateBack() },
                     onSearchClick = { viewModel.navigateTo(Screen.SEARCH) },
                     onCreatePostClick = { viewModel.navigateTo(Screen.CREATE_POST) },
                     onCreateStoryClick = { viewModel.navigateTo(Screen.CREATE_STORY) }
@@ -228,17 +227,17 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.EDIT_PROFILE -> EditProfileScreen(
                     viewModel = viewModel,
-                    onBack = { viewModel.navigateTo(Screen.PROFILE) }
+                    onBack = { viewModel.navigateBack() }
                 )
 
                 Screen.SEARCH -> SearchScreen(
                     viewModel = viewModel,
-                    onBack = { viewModel.navigateTo(Screen.HOME) }
+                    onBack = { viewModel.navigateBack() }
                 )
 
                 Screen.NOTIFICATIONS -> NotificationScreen(
                     viewModel = viewModel,
-                    onBack = { viewModel.navigateTo(Screen.HOME) }
+                    onBack = { viewModel.navigateBack() }
                 )
 
                 Screen.MENU -> MenuScreen(
@@ -248,18 +247,53 @@ fun MainAppContent(viewModel: MainViewModel) {
 
                 Screen.FRIENDS -> FriendsScreen(
                     viewModel = viewModel,
-                    onBack = { viewModel.navigateTo(Screen.HOME) }
+                    onBack = { viewModel.navigateBack() }
                 )
 
                 Screen.STORY_VIEWER -> StoryViewerScreen(
                     stories = stories,
                     initialIndex = activeStoryIndex,
-                    onClose = { viewModel.navigateTo(Screen.HOME) }
+                    onClose = { viewModel.navigateBack() }
                 )
 
                 Screen.FULL_IMAGE_VIEWER -> FullImageViewerScreen(
                     imageUrl = fullScreenImageUrl,
-                    onClose = { viewModel.navigateTo(Screen.HOME) }
+                    onClose = { viewModel.navigateBack() }
+                )
+
+                Screen.VERIFIED_BADGE -> VerifiedBadgeScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
+                )
+
+                Screen.MARKETPLACE -> MarketplaceScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
+                )
+
+                Screen.WALLET -> WalletScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
+                )
+
+                Screen.DEPOSIT -> DepositScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
+                )
+
+                Screen.WITHDRAW -> WithdrawScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
+                )
+
+                Screen.ADMIN_PANEL -> AdminPanelScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
+                )
+
+                Screen.DASHBOARD -> DashboardScreen(
+                    viewModel = viewModel,
+                    onBack = { viewModel.navigateBack() }
                 )
             }
         }
@@ -276,6 +310,26 @@ fun MainAppContent(viewModel: MainViewModel) {
                 userAvatarUrl = currentUser?.profilePic,
                 unreadChatsCount = unreadCount,
                 modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+
+        // Real-time Incoming Audio Call Fullscreen Overlay
+        val incomingCall by viewModel.incomingCallState.collectAsState()
+        if (incomingCall != null) {
+            IncomingCallOverlay(
+                call = incomingCall!!,
+                onAccept = { viewModel.acceptIncomingCall() },
+                onDecline = { viewModel.declineIncomingCall() }
+            )
+        }
+
+        // Active 2-Way Audio Call Fullscreen Overlay
+        val activeCall by viewModel.activeCallState.collectAsState()
+        if (activeCall != null) {
+            ActiveAudioCallOverlay(
+                call = activeCall!!,
+                audioCallManager = viewModel.audioCallManager,
+                onEndCall = { viewModel.endActiveCall() }
             )
         }
     }

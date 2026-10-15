@@ -1,0 +1,1444 @@
+package com.example.ui.screens.admin
+
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.Payment
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.example.data.model.DepositMethod
+import com.example.data.model.DepositRequestItem
+import com.example.data.model.VerificationPackage
+import com.example.data.model.VerificationRequestItem
+import com.example.ui.components.SoftUITheme
+import com.example.ui.components.VerifiedBadge
+import com.example.ui.viewmodel.MainViewModel
+import kotlinx.coroutines.launch
+import java.util.Locale
+
+enum class AdminSection {
+    PACKAGES,
+    VERIFICATION_REQUESTS,
+    DEPOSIT_METHODS,
+    DEPOSIT_REQUESTS
+}
+
+@Composable
+fun AdminPanelScreen(
+    viewModel: MainViewModel,
+    onBack: () -> Unit
+) {
+    BackHandler { onBack() }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val isDark = SoftUITheme.isDark
+
+    var currentSection by remember { mutableStateOf(AdminSection.PACKAGES) }
+
+    // Section 1: Packages & Requirements
+    var packages by remember { mutableStateOf<List<VerificationPackage>>(emptyList()) }
+    var idCardRequired by remember { mutableStateOf(false) }
+    var selfieRequired by remember { mutableStateOf(false) }
+    var graceDays by remember { mutableStateOf("3") }
+    var isLoadingPackages by remember { mutableStateOf(false) }
+
+    // Add / Edit Package Dialog
+    var showPackageDialog by remember { mutableStateOf(false) }
+    var editingPackage by remember { mutableStateOf<VerificationPackage?>(null) }
+    var pkgTitle by remember { mutableStateOf("") }
+    var pkgDesc by remember { mutableStateOf("") }
+    var pkgPrice by remember { mutableStateOf("") }
+    var pkgDurationType by remember { mutableStateOf("month") } // day, month, year, lifetime
+    var pkgDurationValue by remember { mutableStateOf("1") }
+
+    // Section 2: Verification Requests
+    var verReqTab by remember { mutableStateOf("pending") } // pending, approved, rejected
+    var verRequests by remember { mutableStateOf<List<VerificationRequestItem>>(emptyList()) }
+    var isLoadingVerReqs by remember { mutableStateOf(false) }
+    var showRejectVerDialog by remember { mutableStateOf(false) }
+    var rejectingVerReqId by remember { mutableIntStateOf(0) }
+    var rejectReasonText by remember { mutableStateOf("") }
+
+    // Section 3: Deposit Methods
+    var depositMethods by remember { mutableStateOf<List<DepositMethod>>(emptyList()) }
+    var isLoadingMethods by remember { mutableStateOf(false) }
+    var showMethodDialog by remember { mutableStateOf(false) }
+    var editingMethod by remember { mutableStateOf<DepositMethod?>(null) }
+    var methodName by remember { mutableStateOf("") }
+    var methodNumber by remember { mutableStateOf("") }
+    var methodImage by remember { mutableStateOf("") }
+    var methodDesc by remember { mutableStateOf("") }
+    var methodIsActive by remember { mutableStateOf(true) }
+
+    // Section 4: Deposit Requests
+    var depReqTab by remember { mutableStateOf("pending") } // pending, approved, rejected
+    var depRequests by remember { mutableStateOf<List<DepositRequestItem>>(emptyList()) }
+    var isLoadingDepReqs by remember { mutableStateOf(false) }
+    var showRejectDepDialog by remember { mutableStateOf(false) }
+    var rejectingDepReqId by remember { mutableIntStateOf(0) }
+    var rejectDepReasonText by remember { mutableStateOf("") }
+
+    // Fetch helpers
+    fun loadPackagesAndSettings() {
+        isLoadingPackages = true
+        scope.launch {
+            val res = viewModel.repository.getAdminPackages()
+            if (res.isSuccess) {
+                val data = res.getOrNull()
+                packages = data?.packages ?: emptyList()
+                idCardRequired = data?.settings?.idCardRequired ?: false
+                selfieRequired = data?.settings?.selfieRequired ?: false
+                graceDays = (data?.settings?.gracePeriodDays ?: 3).toString()
+            }
+            isLoadingPackages = false
+        }
+    }
+
+    fun loadVerRequests(status: String) {
+        isLoadingVerReqs = true
+        scope.launch {
+            val res = viewModel.repository.getAdminVerificationRequests(status)
+            if (res.isSuccess) {
+                verRequests = res.getOrNull()?.requests ?: emptyList()
+            }
+            isLoadingVerReqs = false
+        }
+    }
+
+    fun loadDepositMethods() {
+        isLoadingMethods = true
+        scope.launch {
+            val res = viewModel.repository.getAdminDepositMethods()
+            if (res.isSuccess) {
+                depositMethods = res.getOrNull() ?: emptyList()
+            }
+            isLoadingMethods = false
+        }
+    }
+
+    fun loadDepositRequests(status: String) {
+        isLoadingDepReqs = true
+        scope.launch {
+            val res = viewModel.repository.getAdminDepositRequests(status)
+            if (res.isSuccess) {
+                depRequests = res.getOrNull()?.requests ?: emptyList()
+            }
+            isLoadingDepReqs = false
+        }
+    }
+
+    LaunchedEffect(currentSection) {
+        when (currentSection) {
+            AdminSection.PACKAGES -> loadPackagesAndSettings()
+            AdminSection.VERIFICATION_REQUESTS -> loadVerRequests(verReqTab)
+            AdminSection.DEPOSIT_METHODS -> loadDepositMethods()
+            AdminSection.DEPOSIT_REQUESTS -> loadDepositRequests(depReqTab)
+        }
+    }
+
+    val cardBg = if (isDark) Color(0xFF1E222B) else Color.White
+    val cardBorder = if (isDark) Color(0xFF2D323E) else Color(0xFFE4E9F2)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (isDark) Color(0xFF11141A) else Color(0xFFF5F7FB))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            // Top Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (isDark) Color(0xFF1A1D24) else Color.White)
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("admin_back_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = SoftUITheme.TextDark
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Admin Panel",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SoftUITheme.TextDark
+                    )
+                }
+            }
+
+            // Section Switcher Row (4 menus)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(if (isDark) Color(0xFF161920) else Color(0xFFEBF0F8))
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                AdminSectionButton(
+                    title = "Badge Pkg",
+                    isSelected = currentSection == AdminSection.PACKAGES,
+                    modifier = Modifier.weight(1f)
+                ) { currentSection = AdminSection.PACKAGES }
+
+                AdminSectionButton(
+                    title = "Badge Req",
+                    isSelected = currentSection == AdminSection.VERIFICATION_REQUESTS,
+                    modifier = Modifier.weight(1f)
+                ) { currentSection = AdminSection.VERIFICATION_REQUESTS }
+
+                AdminSectionButton(
+                    title = "Deposit Mth",
+                    isSelected = currentSection == AdminSection.DEPOSIT_METHODS,
+                    modifier = Modifier.weight(1f)
+                ) { currentSection = AdminSection.DEPOSIT_METHODS }
+
+                AdminSectionButton(
+                    title = "Deposit Req",
+                    isSelected = currentSection == AdminSection.DEPOSIT_REQUESTS,
+                    modifier = Modifier.weight(1f)
+                ) { currentSection = AdminSection.DEPOSIT_REQUESTS }
+            }
+
+            // Body Content based on active section
+            when (currentSection) {
+                // ==========================================
+                // 1. VERIFICATION PACKAGES & REQUIREMENTS
+                // ==========================================
+                AdminSection.PACKAGES -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
+                        // Requirements & Grace Period Card
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(2.dp, RoundedCornerShape(16.dp))
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(cardBg)
+                                .border(1.dp, cardBorder, RoundedCornerShape(16.dp))
+                                .padding(16.dp)
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Verification Requirements Configuration",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp,
+                                    color = SoftUITheme.TextDark
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // ID Card toggle
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Require National ID / Passport",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.5.sp,
+                                            color = SoftUITheme.TextDark
+                                        )
+                                        Text(
+                                            text = "Front & back page upload required from user",
+                                            fontSize = 11.5.sp,
+                                            color = SoftUITheme.TextSecondary
+                                        )
+                                    }
+                                    Switch(
+                                        checked = idCardRequired,
+                                        onCheckedChange = { idCardRequired = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF0866FF))
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                // Selfie toggle
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Require Live Face Selfie",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.5.sp,
+                                            color = SoftUITheme.TextDark
+                                        )
+                                        Text(
+                                            text = "Clear selfie upload required from user",
+                                            fontSize = 11.5.sp,
+                                            color = SoftUITheme.TextSecondary
+                                        )
+                                    }
+                                    Switch(
+                                        checked = selfieRequired,
+                                        onCheckedChange = { selfieRequired = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF0866FF))
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                // Grace Period Days
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Grace Period (Extra Days)",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.5.sp,
+                                            color = SoftUITheme.TextDark
+                                        )
+                                        Text(
+                                            text = "Days badge stays on profile after expiration",
+                                            fontSize = 11.5.sp,
+                                            color = SoftUITheme.TextSecondary
+                                        )
+                                    }
+                                    OutlinedTextField(
+                                        value = graceDays,
+                                        onValueChange = { graceDays = it },
+                                        modifier = Modifier.width(90.dp),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                Button(
+                                    onClick = {
+                                        val gVal = graceDays.toIntOrNull() ?: 3
+                                        scope.launch {
+                                            val res = viewModel.repository.adminSaveVerificationSettings(
+                                                idCardRequired = idCardRequired,
+                                                selfieRequired = selfieRequired,
+                                                gracePeriodDays = gVal
+                                            )
+                                            if (res.isSuccess) {
+                                                Toast.makeText(context, "Settings saved!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Save failed", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0866FF)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Save Configuration", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        // Packages Header & Add Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Verification Packages (${packages.size})",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SoftUITheme.TextDark
+                            )
+
+                            Button(
+                                onClick = {
+                                    editingPackage = null
+                                    pkgTitle = ""
+                                    pkgDesc = ""
+                                    pkgPrice = "200"
+                                    pkgDurationType = "month"
+                                    pkgDurationValue = "1"
+                                    showPackageDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add Package", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        if (packages.isEmpty() && !isLoadingPackages) {
+                            Text(
+                                text = "No verification packages added yet. Click Add Package to create one.",
+                                fontSize = 13.sp,
+                                color = SoftUITheme.TextSecondary,
+                                modifier = Modifier.padding(vertical = 24.dp)
+                            )
+                        }
+
+                        packages.forEach { pkg ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                                    .shadow(2.dp, RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(cardBg)
+                                    .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
+                                    .padding(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = pkg.title,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = SoftUITheme.TextDark
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            VerifiedBadge(size = 18.dp)
+                                        }
+                                        if (!pkg.description.isNullOrEmpty()) {
+                                            Text(
+                                                text = pkg.description,
+                                                fontSize = 12.sp,
+                                                color = SoftUITheme.TextSecondary
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "৳ ${String.format(Locale.getDefault(), "%.2f", pkg.price)} • Duration: ${pkg.durationText}",
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF0866FF)
+                                        )
+                                    }
+
+                                    Row {
+                                        IconButton(onClick = {
+                                            editingPackage = pkg
+                                            pkgTitle = pkg.title
+                                            pkgDesc = pkg.description ?: ""
+                                            pkgPrice = pkg.price.toString()
+                                            pkgDurationType = pkg.durationType
+                                            pkgDurationValue = pkg.durationValue.toString()
+                                            showPackageDialog = true
+                                        }) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF0866FF))
+                                        }
+                                        IconButton(onClick = {
+                                            scope.launch {
+                                                val res = viewModel.repository.adminDeletePackage(pkg.id)
+                                                if (res.isSuccess) {
+                                                    Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
+                                                    loadPackagesAndSettings()
+                                                }
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFE53935))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ==========================================
+                // 2. VERIFICATION REQUESTS
+                // ==========================================
+                AdminSection.VERIFICATION_REQUESTS -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TabRow(
+                            selectedTabIndex = when (verReqTab) {
+                                "pending" -> 0
+                                "approved" -> 1
+                                else -> 2
+                            },
+                            containerColor = cardBg
+                        ) {
+                            Tab(
+                                selected = verReqTab == "pending",
+                                onClick = {
+                                    verReqTab = "pending"
+                                    loadVerRequests("pending")
+                                },
+                                text = { Text("Pending", fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = verReqTab == "approved",
+                                onClick = {
+                                    verReqTab = "approved"
+                                    loadVerRequests("approved")
+                                },
+                                text = { Text("Approved", fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = verReqTab == "rejected",
+                                onClick = {
+                                    verReqTab = "rejected"
+                                    loadVerRequests("rejected")
+                                },
+                                text = { Text("Rejected", fontWeight = FontWeight.Bold) }
+                            )
+                        }
+
+                        if (isLoadingVerReqs) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        } else if (verRequests.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "No $verReqTab verification requests found.",
+                                    fontSize = 14.sp,
+                                    color = SoftUITheme.TextSecondary
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(verRequests, key = { it.id }) { req ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .shadow(2.dp, RoundedCornerShape(14.dp))
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(cardBg)
+                                            .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
+                                            .padding(14.dp)
+                                    ) {
+                                        Column {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = req.userName ?: "User #${req.userId}",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 15.sp,
+                                                        color = SoftUITheme.TextDark
+                                                    )
+                                                    Text(
+                                                        text = "Pkg: ${req.packageTitle ?: "Verified Badge"} • ৳ ${req.amount ?: 0.0}",
+                                                        fontSize = 12.sp,
+                                                        color = Color(0xFF0866FF),
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                                Text(
+                                                    text = req.status.uppercase(Locale.getDefault()),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = when (req.status) {
+                                                        "approved" -> Color(0xFF00C853)
+                                                        "rejected" -> Color(0xFFE53935)
+                                                        else -> Color(0xFFF57F17)
+                                                    }
+                                                )
+                                            }
+
+                                            if (!req.rejectionReason.isNullOrEmpty()) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "Reason: ${req.rejectionReason}",
+                                                    fontSize = 11.5.sp,
+                                                    color = Color(0xFFE53935)
+                                                )
+                                            }
+
+                                            // ID front, back, selfie preview if present
+                                            if (!req.idFrontUrl.isNullOrEmpty() || !req.idBackUrl.isNullOrEmpty() || !req.selfieUrl.isNullOrEmpty()) {
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    req.idFrontUrl?.let { url ->
+                                                        AsyncImage(
+                                                            model = url,
+                                                            contentDescription = "ID Front",
+                                                            modifier = Modifier
+                                                                .size(60.dp)
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(Color.LightGray)
+                                                        )
+                                                    }
+                                                    req.idBackUrl?.let { url ->
+                                                        AsyncImage(
+                                                            model = url,
+                                                            contentDescription = "ID Back",
+                                                            modifier = Modifier
+                                                                .size(60.dp)
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(Color.LightGray)
+                                                        )
+                                                    }
+                                                    req.selfieUrl?.let { url ->
+                                                        AsyncImage(
+                                                            model = url,
+                                                            contentDescription = "Selfie",
+                                                            modifier = Modifier
+                                                                .size(60.dp)
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(Color.LightGray)
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            if (req.status == "pending") {
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.End
+                                                ) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            rejectingVerReqId = req.id
+                                                            rejectReasonText = ""
+                                                            showRejectVerDialog = true
+                                                        },
+                                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    ) {
+                                                        Text("Reject")
+                                                    }
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Button(
+                                                        onClick = {
+                                                            scope.launch {
+                                                                val res = viewModel.repository.adminApproveVerification(req.id)
+                                                                if (res.isSuccess) {
+                                                                    Toast.makeText(context, "Approved!", Toast.LENGTH_SHORT).show()
+                                                                    loadVerRequests(verReqTab)
+                                                                } else {
+                                                                    Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    ) {
+                                                        Text("Approve")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ==========================================
+                // 3. DEPOSIT METHODS MANAGEMENT
+                // ==========================================
+                AdminSection.DEPOSIT_METHODS -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Deposit Payment Methods (${depositMethods.size})",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = SoftUITheme.TextDark
+                            )
+
+                            Button(
+                                onClick = {
+                                    editingMethod = null
+                                    methodName = ""
+                                    methodNumber = ""
+                                    methodImage = ""
+                                    methodDesc = "Send money and submit transaction ID."
+                                    methodIsActive = true
+                                    showMethodDialog = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add Method", fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (depositMethods.isEmpty() && !isLoadingMethods) {
+                            Text(
+                                text = "No deposit payment methods added. Click Add Method to create bKash, Nagad, Rocket, Bank etc.",
+                                fontSize = 13.sp,
+                                color = SoftUITheme.TextSecondary,
+                                modifier = Modifier.padding(vertical = 24.dp)
+                            )
+                        }
+
+                        depositMethods.forEach { m ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 6.dp)
+                                    .shadow(2.dp, RoundedCornerShape(14.dp))
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(cardBg)
+                                    .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
+                                    .padding(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        if (!m.imageUrl.isNullOrEmpty()) {
+                                            AsyncImage(
+                                                model = m.imageUrl,
+                                                contentDescription = m.name,
+                                                modifier = Modifier
+                                                    .size(44.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFEEEEEE))
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                        }
+                                        Column {
+                                            Text(
+                                                text = m.name,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = SoftUITheme.TextDark
+                                            )
+                                            Text(
+                                                text = "Number: ${m.number}",
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF0866FF)
+                                            )
+                                            if (!m.description.isNullOrEmpty()) {
+                                                Text(
+                                                    text = m.description,
+                                                    fontSize = 11.5.sp,
+                                                    color = SoftUITheme.TextSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Row {
+                                        IconButton(onClick = {
+                                            editingMethod = m
+                                            methodName = m.name
+                                            methodNumber = m.number
+                                            methodImage = m.imageUrl ?: ""
+                                            methodDesc = m.description ?: ""
+                                            methodIsActive = m.isActive == 1
+                                            showMethodDialog = true
+                                        }) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = Color(0xFF0866FF))
+                                        }
+                                        IconButton(onClick = {
+                                            scope.launch {
+                                                val res = viewModel.repository.adminDeleteDepositMethod(m.id)
+                                                if (res.isSuccess) {
+                                                    Toast.makeText(context, "Deleted", Toast.LENGTH_SHORT).show()
+                                                    loadDepositMethods()
+                                                }
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFE53935))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ==========================================
+                // 4. DEPOSIT REQUESTS MANAGEMENT
+                // ==========================================
+                AdminSection.DEPOSIT_REQUESTS -> {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        TabRow(
+                            selectedTabIndex = when (depReqTab) {
+                                "pending" -> 0
+                                "approved" -> 1
+                                else -> 2
+                            },
+                            containerColor = cardBg
+                        ) {
+                            Tab(
+                                selected = depReqTab == "pending",
+                                onClick = {
+                                    depReqTab = "pending"
+                                    loadDepositRequests("pending")
+                                },
+                                text = { Text("Pending", fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = depReqTab == "approved",
+                                onClick = {
+                                    depReqTab = "approved"
+                                    loadDepositRequests("approved")
+                                },
+                                text = { Text("Approved", fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = depReqTab == "rejected",
+                                onClick = {
+                                    depReqTab = "rejected"
+                                    loadDepositRequests("rejected")
+                                },
+                                text = { Text("Rejected", fontWeight = FontWeight.Bold) }
+                            )
+                        }
+
+                        if (isLoadingDepReqs) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        } else if (depRequests.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "No $depReqTab deposit requests found.",
+                                    fontSize = 14.sp,
+                                    color = SoftUITheme.TextSecondary
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                items(depRequests, key = { it.id }) { req ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .shadow(2.dp, RoundedCornerShape(14.dp))
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(cardBg)
+                                            .border(1.dp, cardBorder, RoundedCornerShape(14.dp))
+                                            .padding(14.dp)
+                                    ) {
+                                        Column {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = req.userName ?: "User #${req.userId}",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 15.sp,
+                                                        color = SoftUITheme.TextDark
+                                                    )
+                                                    Text(
+                                                        text = "Amount: ৳ ${String.format(Locale.getDefault(), "%.2f", req.amount)} via ${req.methodName}",
+                                                        fontSize = 13.sp,
+                                                        color = Color(0xFF00C853),
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        text = "TrxID: ${req.transactionId}",
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = SoftUITheme.TextDark
+                                                    )
+                                                }
+                                                Text(
+                                                    text = req.status.uppercase(Locale.getDefault()),
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp,
+                                                    color = when (req.status) {
+                                                        "approved" -> Color(0xFF00C853)
+                                                        "rejected" -> Color(0xFFE53935)
+                                                        else -> Color(0xFFF57F17)
+                                                    }
+                                                )
+                                            }
+
+                                            if (!req.rejectionReason.isNullOrEmpty()) {
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "Reason: ${req.rejectionReason}",
+                                                    fontSize = 11.5.sp,
+                                                    color = Color(0xFFE53935)
+                                                )
+                                            }
+
+                                            if (req.status == "pending") {
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.End
+                                                ) {
+                                                    OutlinedButton(
+                                                        onClick = {
+                                                            rejectingDepReqId = req.id
+                                                            rejectDepReasonText = ""
+                                                            showRejectDepDialog = true
+                                                        },
+                                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    ) {
+                                                        Text("Reject")
+                                                    }
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Button(
+                                                        onClick = {
+                                                            scope.launch {
+                                                                val res = viewModel.repository.adminApproveDeposit(req.id)
+                                                                if (res.isSuccess) {
+                                                                    Toast.makeText(context, "Deposit Approved & Credited!", Toast.LENGTH_SHORT).show()
+                                                                    loadDepositRequests(depReqTab)
+                                                                } else {
+                                                                    Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        },
+                                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00C853)),
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    ) {
+                                                        Text("Approve")
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ==========================================
+    // DIALOG: ADD / EDIT PACKAGE
+    // ==========================================
+    if (showPackageDialog) {
+        var durationMenuExpanded by remember { mutableStateOf(false) }
+
+        AlertDialog(
+            onDismissRequest = { showPackageDialog = false },
+            title = {
+                Text(
+                    text = if (editingPackage == null) "Add Verification Package" else "Edit Verification Package",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = pkgTitle,
+                        onValueChange = { pkgTitle = it },
+                        label = { Text("Package Title *") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = pkgDesc,
+                        onValueChange = { pkgDesc = it },
+                        label = { Text("Description (Optional)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = pkgPrice,
+                        onValueChange = { pkgPrice = it },
+                        label = { Text("Price (BDT / ৳) *") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Duration Type Dropdown
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = when (pkgDurationType) {
+                                "day" -> "Day"
+                                "month" -> "Month"
+                                "year" -> "Year"
+                                "lifetime" -> "Lifetime"
+                                else -> pkgDurationType.replaceFirstChar { it.uppercase() }
+                            },
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Duration Type *") },
+                            trailingIcon = {
+                                IconButton(onClick = { durationMenuExpanded = true }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { durationMenuExpanded = true }
+                        )
+
+                        DropdownMenu(
+                            expanded = durationMenuExpanded,
+                            onDismissRequest = { durationMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Day") },
+                                onClick = {
+                                    pkgDurationType = "day"
+                                    durationMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Month") },
+                                onClick = {
+                                    pkgDurationType = "month"
+                                    durationMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Year") },
+                                onClick = {
+                                    pkgDurationType = "year"
+                                    durationMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Lifetime") },
+                                onClick = {
+                                    pkgDurationType = "lifetime"
+                                    durationMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+
+                    if (pkgDurationType != "lifetime") {
+                        OutlinedTextField(
+                            value = pkgDurationValue,
+                            onValueChange = { pkgDurationValue = it },
+                            label = { Text("Duration Count (e.g. 1, 3, 6, 12)") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val pPrice = pkgPrice.toDoubleOrNull() ?: 0.0
+                        val pVal = if (pkgDurationType == "lifetime") 0 else (pkgDurationValue.toIntOrNull() ?: 1)
+                        if (pkgTitle.isBlank()) {
+                            Toast.makeText(context, "Title is required", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        scope.launch {
+                            val res = if (editingPackage == null) {
+                                viewModel.repository.adminCreatePackage(
+                                    title = pkgTitle.trim(),
+                                    description = pkgDesc.trim().ifEmpty { null },
+                                    price = pPrice,
+                                    durationType = pkgDurationType,
+                                    durationValue = pVal
+                                )
+                            } else {
+                                viewModel.repository.adminEditPackage(
+                                    id = editingPackage!!.id,
+                                    title = pkgTitle.trim(),
+                                    description = pkgDesc.trim().ifEmpty { null },
+                                    price = pPrice,
+                                    durationType = pkgDurationType,
+                                    durationValue = pVal
+                                )
+                            }
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Saved!", Toast.LENGTH_SHORT).show()
+                                showPackageDialog = false
+                                loadPackagesAndSettings()
+                            } else {
+                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Error", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0866FF))
+                ) {
+                    Text("Submit")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPackageDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // ==========================================
+    // DIALOG: REJECT VERIFICATION
+    // ==========================================
+    if (showRejectVerDialog) {
+        AlertDialog(
+            onDismissRequest = { showRejectVerDialog = false },
+            title = { Text("Reject Verification Request", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Optionally provide rejection reason (fee will be refunded to user wallet):", fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = rejectReasonText,
+                        onValueChange = { rejectReasonText = it },
+                        placeholder = { Text("e.g. Blurry ID card or photo mismatch") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val res = viewModel.repository.adminRejectVerification(
+                                requestId = rejectingVerReqId,
+                                reason = rejectReasonText.trim().ifEmpty { null }
+                            )
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Rejected and refunded", Toast.LENGTH_SHORT).show()
+                                showRejectVerDialog = false
+                                loadVerRequests(verReqTab)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
+                ) {
+                    Text("Reject & Refund")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectVerDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // ==========================================
+    // DIALOG: ADD / EDIT DEPOSIT METHOD
+    // ==========================================
+    if (showMethodDialog) {
+        AlertDialog(
+            onDismissRequest = { showMethodDialog = false },
+            title = {
+                Text(
+                    text = if (editingMethod == null) "Add Deposit Method" else "Edit Deposit Method",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = methodName,
+                        onValueChange = { methodName = it },
+                        label = { Text("Method Name (e.g. bKash, Nagad) *") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = methodNumber,
+                        onValueChange = { methodNumber = it },
+                        label = { Text("Account / Phone Number *") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = methodImage,
+                        onValueChange = { methodImage = it },
+                        label = { Text("Method Logo Image URL (Optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = methodDesc,
+                        onValueChange = { methodDesc = it },
+                        label = { Text("Instructions / Description") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFF5F7FA))
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Active Method", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Visible to users for deposit", fontSize = 12.sp, color = Color.Gray)
+                        }
+                        Switch(
+                            checked = methodIsActive,
+                            onCheckedChange = { methodIsActive = it }
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (methodName.isBlank() || methodNumber.isBlank()) {
+                            Toast.makeText(context, "Name and number required", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        scope.launch {
+                            val activeVal = if (methodIsActive) 1 else 0
+                            val res = if (editingMethod == null) {
+                                viewModel.repository.adminCreateDepositMethod(
+                                    name = methodName.trim(),
+                                    number = methodNumber.trim(),
+                                    imageUrl = methodImage.trim().ifEmpty { null },
+                                    description = methodDesc.trim().ifEmpty { null },
+                                    isActive = activeVal
+                                )
+                            } else {
+                                viewModel.repository.adminEditDepositMethod(
+                                    id = editingMethod!!.id,
+                                    name = methodName.trim(),
+                                    number = methodNumber.trim(),
+                                    imageUrl = methodImage.trim().ifEmpty { null },
+                                    description = methodDesc.trim().ifEmpty { null },
+                                    isActive = activeVal
+                                )
+                            }
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Saved!", Toast.LENGTH_SHORT).show()
+                                showMethodDialog = false
+                                loadDepositMethods()
+                            } else {
+                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Error", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0866FF))
+                ) {
+                    Text("Submit")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMethodDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // ==========================================
+    // DIALOG: REJECT DEPOSIT
+    // ==========================================
+    if (showRejectDepDialog) {
+        AlertDialog(
+            onDismissRequest = { showRejectDepDialog = false },
+            title = { Text("Reject Deposit Request", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Specify rejection reason (optional):", fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = rejectDepReasonText,
+                        onValueChange = { rejectDepReasonText = it },
+                        placeholder = { Text("e.g. Transaction ID not found in statement") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            val res = viewModel.repository.adminRejectDeposit(
+                                requestId = rejectingDepReqId,
+                                reason = rejectDepReasonText.trim().ifEmpty { null }
+                            )
+                            if (res.isSuccess) {
+                                Toast.makeText(context, "Deposit Rejected", Toast.LENGTH_SHORT).show()
+                                showRejectDepDialog = false
+                                loadDepositRequests(depReqTab)
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
+                ) {
+                    Text("Reject")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRejectDepDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AdminSectionButton(
+    title: String,
+    isSelected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (isSelected) Color(0xFF0866FF) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            fontSize = 11.5.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            color = if (isSelected) Color.White else SoftUITheme.TextSecondary
+        )
+    }
+}

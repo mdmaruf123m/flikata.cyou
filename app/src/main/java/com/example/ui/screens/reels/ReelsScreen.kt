@@ -221,14 +221,14 @@ fun ReelsScreen(
                 }
             }
         } else {
-            // Record Real View in Database when Reel is Viewed
+            // Record Real View in Database when Reel is Viewed (Strictly unique, excludes self-views)
             LaunchedEffect(pagerState.currentPage, reelsList.size) {
                 if (reelsList.isNotEmpty()) {
                     val currentReel = reelsList.getOrNull(pagerState.currentPage)
                     if (currentReel != null && currentReel.id.isNotBlank()) {
-                        viewModel.recordReelView(currentReel.id)
-                        val currViews = currentReel.viewsCount.replace("K", "").toIntOrNull() ?: 0
-                        currentReel.viewsCount = (currViews + 1).toString()
+                        viewModel.recordReelView(currentReel.id) { verifiedCount ->
+                            currentReel.viewsCount = verifiedCount.toString()
+                        }
                     }
                 }
             }
@@ -567,8 +567,8 @@ private fun ReelPageItem(
                             fontSize = 15.sp
                         )
                         if (reel.isVerified) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            VerifiedBadge(size = 14.dp)
+                            Spacer(modifier = Modifier.width(5.dp))
+                            VerifiedBadge(size = 18.dp)
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -1007,7 +1007,7 @@ private fun ReelCommentsBottomSheet(
                                                 )
                                                 if (comment.isVerified) {
                                                     Spacer(modifier = Modifier.width(4.dp))
-                                                    VerifiedBadge(size = 12.dp)
+                                                    VerifiedBadge(size = 16.dp)
                                                 }
                                             }
                                             Spacer(modifier = Modifier.height(3.dp))

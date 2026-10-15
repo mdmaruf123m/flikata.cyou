@@ -32,7 +32,7 @@ $convs = $stmt->fetchAll();
 
 $formatted = [];
 foreach ($convs as $cv) {
-    $uStmt = $pdo->prepare("SELECT id, full_name, profile_pic, is_verified, is_online FROM users WHERE id = ?");
+    $uStmt = $pdo->prepare("SELECT id, full_name, profile_pic, is_verified, is_online, updated_at FROM users WHERE id = ?");
     $uStmt->execute([$cv['partner_id']]);
     $partner = $uStmt->fetch();
 
@@ -44,6 +44,9 @@ foreach ($convs as $cv) {
         $unreadStmt->execute([$cv['conversation_id'], $myId]);
         $unreadCount = (int)$unreadStmt->fetchColumn();
 
+        $secondsAgo = !empty($partner['updated_at']) ? (time() - strtotime($partner['updated_at'])) : 99999;
+        $isOnline = ((int)($partner['is_online'] ?? 0) === 1 && $secondsAgo <= 60);
+
         $formatted[] = [
             'id'             => (string)$cv['conversation_id'],
             'threadId'       => (string)$cv['conversation_id'],
@@ -51,7 +54,7 @@ foreach ($convs as $cv) {
             'senderName'     => $partner['full_name'],
             'senderAvatar'   => $partner['profile_pic'] ?: '',
             'isVerified'     => (bool)$partner['is_verified'],
-            'isOnline'       => (bool)$partner['is_online'],
+            'isOnline'       => (bool)$isOnline,
             'message'        => $cv['last_message'] ?: 'Conversation started',
             'timestamp'      => $cv['last_message_time'],
             'isVoiceMessage' => false,

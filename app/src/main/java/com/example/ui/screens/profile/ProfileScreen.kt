@@ -7,6 +7,10 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import coil.decode.VideoFrameDecoder
+import coil.request.ImageRequest
+import coil.request.videoFrameMillis
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -52,11 +57,17 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.ui.platform.LocalContext
 import android.content.Context
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.example.data.model.ReelModel
 import com.example.ui.components.VerifiedBadge
 import com.example.ui.viewmodel.Screen
@@ -177,11 +188,32 @@ fun ProfileScreen(
     val displayUserAvatar = if (isOwnProfile) (currentUser?.profilePic ?: "") else (externalProfile?.profilePic ?: userPosts.firstOrNull()?.authorAvatar ?: "")
     val displayUserCover = if (isOwnProfile) (currentUser?.coverPic ?: "") else (externalProfile?.coverPic ?: "")
     val displayIsVerified = if (isOwnProfile) (currentUser?.isVerified ?: false) else (externalProfile?.isVerifiedBool ?: userPosts.firstOrNull()?.isVerified ?: false)
+    val displayIsOnline = if (isOwnProfile) true else (externalProfile?.isOnlineBool ?: false)
     val displayBio = if (isOwnProfile) (currentUser?.bio ?: "Drop a thought...") else (externalProfile?.bio ?: "Hey there! I am using Flikata.")
     val displayOccupation = if (isOwnProfile) "Digital Creator" else (externalProfile?.occupation ?: "Digital Creator")
     val displayLocation = if (isOwnProfile) "Dhaka, Bangladesh" else (externalProfile?.location ?: "Dhaka, Bangladesh")
     val displayJoinedDate = if (isOwnProfile) (currentUser?.joinedDate ?: "Joined September 2026") else (externalProfile?.joinedDate ?: "Joined October 2026")
     var isFollowingOtherUser by remember(selectedUserProfileId) { mutableStateOf(false) }
+
+    val micLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val targetUid = selectedUserProfileId?.removePrefix("user_")?.toIntOrNull() ?: 1
+            if (!displayIsOnline) {
+                Toast.makeText(context, "Offline", Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.startAudioCall(
+                    partnerId = targetUid,
+                    partnerName = displayUserName,
+                    partnerAvatar = displayUserAvatar,
+                    isVerified = displayIsVerified
+                )
+            }
+        } else {
+            Toast.makeText(context, "মাইক্রোফোন পারমিশন ছাড়া অডিও কল করা সম্ভব নয়", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val userReels = remember(userPosts, allReelsList, isOwnProfile, selectedUserProfileId, selectedUserProfileName, currentUser) {
         val videoPosts = userPosts.filter { !it.videoUrl.isNullOrBlank() || it.isVideo }
@@ -193,6 +225,10 @@ fun ProfileScreen(
             }
         }
         val fromPosts = videoPosts.map { p ->
+            val matchedReel = allReelsList.find { r ->
+                (r.mediaUrl.isNotBlank() && r.mediaUrl == p.videoUrl) || r.id == "post_${p.id}"
+            }
+            val realViews = matchedReel?.viewsCount?.ifBlank { null } ?: "${p.viewsCount}"
             ReelModel(
                 id = "post_${p.id}",
                 userId = p.userId,
@@ -205,7 +241,7 @@ fun ProfileScreen(
                 likesCount = p.likesCount,
                 commentsCount = p.commentsCount,
                 sharesCount = p.sharesCount,
-                viewsCount = "${(p.likesCount * 13 + 120)}",
+                viewsCount = realViews,
                 isLiked = p.isLiked,
                 userReaction = p.userReaction
             )
@@ -292,9 +328,19 @@ fun ProfileScreen(
                                 .fillMaxWidth()
                                 .statusBarsPadding()
                                 .padding(horizontal = 12.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            CoverCircleButton(
+                                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                                onClick = {
+                                    if (!isOwnProfile) {
+                                        viewModel.clearSelectedUserProfile()
+                                    }
+                                    onBack()
+                                }
+                            )
+
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 if (isOwnProfile) {
                                     CoverCircleButton(icon = Icons.Default.Edit, onClick = { viewModel.prepareEditProfile() })
@@ -380,7 +426,16 @@ fun ProfileScreen(
                                 )
                                 if (displayIsVerified) {
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    VerifiedBadge(size = 20.dp)
+                                    VerifiedBadge(size = 26.dp)
+                                }
+                                if (displayIsOnline && !isOwnProfile) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(11.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF45BD62))
+                                    )
                                 }
                             }
 
@@ -434,7 +489,9 @@ fun ProfileScreen(
                                                 )
                                             )
                                             .border(1.dp, Color(0x88FFFFFF), RoundedCornerShape(14.dp))
-                                            .clickable { }
+                                            .clickable {
+                                                viewModel.navigateTo(Screen.DASHBOARD)
+                                            }
                                             .testTag("dashboard_btn"),
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -576,6 +633,50 @@ fun ProfileScreen(
                                             )
                                         }
                                     }
+
+                                    // 3D Audio Call Button
+                                    Box(
+                                        modifier = Modifier
+                                            .size(46.dp)
+                                            .shadow(
+                                                elevation = if (isDark) 2.dp else 4.dp,
+                                                shape = RoundedCornerShape(14.dp),
+                                                ambientColor = com.example.ui.components.SoftUITheme.ShadowDark
+                                            )
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xFF0075FF), Color(0xFF0052D4))))
+                                            .border(1.dp, Color(0x66FFFFFF), RoundedCornerShape(14.dp))
+                                            .clickable {
+                                                val hasMic = ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.RECORD_AUDIO
+                                                ) == PackageManager.PERMISSION_GRANTED
+                                                if (hasMic) {
+                                                    val targetUid = selectedUserProfileId?.removePrefix("user_")?.toIntOrNull() ?: 1
+                                                    if (!displayIsOnline) {
+                                                        Toast.makeText(context, "Offline", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        viewModel.startAudioCall(
+                                                            partnerId = targetUid,
+                                                            partnerName = displayUserName,
+                                                            partnerAvatar = displayUserAvatar,
+                                                            isVerified = displayIsVerified
+                                                        )
+                                                    }
+                                                } else {
+                                                    micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                                }
+                                            }
+                                            .testTag("profile_audio_call_btn"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Call,
+                                            contentDescription = "Audio Call",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -659,6 +760,19 @@ fun ProfileScreen(
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
+                        }
+
+                        // Active green status dot on avatar for other online user
+                        if (displayIsOnline && !isOwnProfile) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .offset(x = (-4).dp, y = (-4).dp)
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF45BD62))
+                                    .border(3.5.dp, screenSurface, CircleShape)
+                            )
                         }
                     }
                 }
@@ -755,19 +869,52 @@ fun ProfileScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 rowItems.forEach { reel ->
+                                                    val context = LocalContext.current
+                                                    val videoRequest = remember(reel.mediaUrl) {
+                                                        if (reel.mediaUrl.isNotBlank() && (reel.mediaUrl.endsWith(".mp4", ignoreCase = true) || reel.mediaUrl.contains("/video", ignoreCase = true))) {
+                                                            ImageRequest.Builder(context)
+                                                                .data(reel.mediaUrl)
+                                                                .decoderFactory { result, options, _ -> VideoFrameDecoder(result.source, options) }
+                                                                .videoFrameMillis(1000)
+                                                                .crossfade(true)
+                                                                .build()
+                                                        } else {
+                                                            reel.mediaUrl.ifBlank { reel.authorAvatar }
+                                                        }
+                                                    }
+
+                                                    val rawViews = reel.viewsCount.toIntOrNull() ?: 0
+                                                    val formattedViews = if (rawViews >= 1000) {
+                                                        String.format(java.util.Locale.US, "%.1fK", rawViews / 1000.0)
+                                                    } else {
+                                                        "$rawViews"
+                                                    }
+
                                                     Box(
                                                         modifier = Modifier
                                                             .weight(1f)
-                                                            .aspectRatio(0.75f)
-                                                            .clip(RoundedCornerShape(8.dp))
-                                                            .background(Color.DarkGray)
+                                                            .aspectRatio(0.5625f) // 9:16 vertical ratio for taller reels
+                                                            .clip(RoundedCornerShape(10.dp))
+                                                            .background(Color(0xFF1E2128))
                                                             .clickable { viewModel.openReel(reel.id) }
                                                     ) {
                                                         AsyncImage(
-                                                            model = reel.mediaUrl.ifBlank { reel.authorAvatar },
+                                                            model = videoRequest,
                                                             contentDescription = "Reel Thumbnail",
                                                             contentScale = ContentScale.Crop,
                                                             modifier = Modifier.fillMaxSize()
+                                                        )
+
+                                                        // Subtle top gradient & play badge
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .height(40.dp)
+                                                                .background(
+                                                                    Brush.verticalGradient(
+                                                                        listOf(Color.Black.copy(alpha = 0.5f), Color.Transparent)
+                                                                    )
+                                                                )
                                                         )
 
                                                         Icon(
@@ -777,30 +924,31 @@ fun ProfileScreen(
                                                             modifier = Modifier
                                                                 .align(Alignment.TopEnd)
                                                                 .padding(6.dp)
-                                                                .size(20.dp)
+                                                                .size(18.dp)
                                                         )
 
+                                                        // Bottom views bar with verified real view count
                                                         Row(
                                                             modifier = Modifier
                                                                 .align(Alignment.BottomStart)
                                                                 .fillMaxWidth()
                                                                 .background(
                                                                     Brush.verticalGradient(
-                                                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
                                                                     )
                                                                 )
-                                                                .padding(6.dp),
+                                                                .padding(horizontal = 6.dp, vertical = 6.dp),
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
                                                             Icon(
                                                                 imageVector = Icons.Default.PlayArrow,
                                                                 contentDescription = "Views",
                                                                 tint = Color.White,
-                                                                modifier = Modifier.size(12.dp)
+                                                                modifier = Modifier.size(13.dp)
                                                             )
                                                             Spacer(modifier = Modifier.width(3.dp))
                                                             Text(
-                                                                text = "${reel.viewsCount.ifBlank { (reel.likesCount * 12 + 140).toString() }} views",
+                                                                text = "$formattedViews views",
                                                                 color = Color.White,
                                                                 fontSize = 11.sp,
                                                                 fontWeight = FontWeight.Bold
@@ -942,7 +1090,9 @@ fun ProfileScreen(
             isOwnProfile = isOwnProfile,
             onDismiss = { showSettingsSheet = false },
             onOptionClick = { option ->
-                if (option == "Copy Link" || option.contains("Link", ignoreCase = true)) {
+                if (option.equals("Dashboard", ignoreCase = true)) {
+                    viewModel.navigateTo(Screen.DASHBOARD)
+                } else if (option == "Copy Link" || option.contains("Link", ignoreCase = true)) {
                     val targetUserId = if (isOwnProfile) (currentUser?.id ?: "") else (selectedUserProfileId ?: "")
                     val profileUrl = if (targetUserId.isNotBlank()) {
                         "https://flikata.cyou/backend/profile.php?id=$targetUserId"
@@ -953,6 +1103,8 @@ fun ProfileScreen(
                     val clip = ClipData.newPlainText("Flikata Profile Link", profileUrl)
                     clipboard.setPrimaryClip(clip)
                     Toast.makeText(context, "Profile link copied to clipboard!", Toast.LENGTH_SHORT).show()
+                } else if (option == "Verified Badge" || option == "Verified") {
+                    viewModel.navigateTo(Screen.VERIFIED_BADGE)
                 } else if (option == "Share Profile") {
                     val targetUserId = if (isOwnProfile) (currentUser?.id ?: "") else (selectedUserProfileId ?: "")
                     val profileUrl = "https://flikata.cyou/backend/profile.php?id=$targetUserId"
@@ -961,6 +1113,12 @@ fun ProfileScreen(
                         putExtra(android.content.Intent.EXTRA_TEXT, "Check out this profile on Flikata:\n$profileUrl")
                     }
                     context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Profile"))
+                } else if (option.equals("Pages", ignoreCase = true)) {
+                    Toast.makeText(context, "Pages coming soon!", Toast.LENGTH_SHORT).show()
+                } else if (option.equals("Groups", ignoreCase = true)) {
+                    Toast.makeText(context, "Groups coming soon!", Toast.LENGTH_SHORT).show()
+                } else if (option.equals("Settings", ignoreCase = true)) {
+                    Toast.makeText(context, "Settings coming soon!", Toast.LENGTH_SHORT).show()
                 }
             },
             onLogoutClick = { viewModel.logout() }

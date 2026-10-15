@@ -16,8 +16,8 @@ android {
     applicationId = "com.flikata.cyou"
     minSdk = 26
     targetSdk = 36
-    versionCode = 8
-    versionName = "1.7"
+    versionCode = 10
+    versionName = "2.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -103,6 +103,7 @@ dependencies {
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.common)
   implementation(libs.coil.compose)
+  implementation(libs.coil.video)
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   // Uncomment to use Firestore:

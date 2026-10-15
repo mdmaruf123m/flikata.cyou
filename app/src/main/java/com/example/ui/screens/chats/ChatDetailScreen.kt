@@ -1,5 +1,12 @@
 package com.example.ui.screens.chats
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -166,8 +173,30 @@ fun ChatDetailScreen(
     var selectedMessageForAction by remember { mutableStateOf<DetailMessage?>(null) }
     val actionSheetState = rememberModalBottomSheetState()
 
+    var isPartnerOnline by remember(partnerId) { mutableStateOf(chat?.isOnline ?: false) }
+
+    val context = LocalContext.current
+    val micLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val pId = partnerId.removePrefix("user_").removePrefix("partner_").toIntOrNull() ?: 1
+            if (!isPartnerOnline) {
+                Toast.makeText(context, "Offline", Toast.LENGTH_SHORT).show()
+            } else {
+                viewModel.startAudioCall(
+                    partnerId = pId,
+                    partnerName = partnerName,
+                    partnerAvatar = partnerAvatar,
+                    isVerified = isVerified
+                )
+            }
+        } else {
+            Toast.makeText(context, "মাইক্রোফোন পারমিশন ছাড়া অডিও কল করা সম্ভব নয়", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     // Audio call state
-    var isAudioCallActive by remember { mutableStateOf(false) }
     val isDark = SoftUITheme.isDark
 
     // Live conversation messages sync from real database
@@ -185,8 +214,16 @@ fun ChatDetailScreen(
                 )
             )
         }
-        // Poll for new messages every 3 seconds while in conversation
+        // Poll for new messages and partner online status every 3 seconds while in conversation
         while (true) {
+            val profRes = viewModel.repository.fetchUserProfile(partnerId)
+            if (profRes.isSuccess) {
+                val prof = profRes.getOrNull()
+                if (prof != null) {
+                    isPartnerOnline = prof.isOnlineBool
+                }
+            }
+
             val res = viewModel.repository.fetchConversationMessages(partnerId)
             if (res.isSuccess) {
                 val serverMsgs = res.getOrNull() ?: emptyList()
@@ -307,15 +344,17 @@ fun ChatDetailScreen(
                                 )
                             }
 
-                            // Green Online Badge
-                            Box(
-                                modifier = Modifier
-                                    .size(12.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFF45BD62))
-                                    .border(1.5.dp, Color.White, CircleShape)
-                                    .align(Alignment.BottomEnd)
-                            )
+                            // Green Online Badge (Only when active)
+                            if (isPartnerOnline) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(13.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF45BD62))
+                                        .border(2.dp, Color.White, CircleShape)
+                                        .align(Alignment.BottomEnd)
+                                )
+                            }
                         }
 
                         Spacer(modifier = Modifier.width(10.dp))
@@ -332,14 +371,23 @@ fun ChatDetailScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 if (isVerified) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    VerifiedBadge(size = 14.dp)
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    VerifiedBadge(size = 22.dp)
+                                }
+                                if (isPartnerOnline) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(9.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF45BD62))
+                                    )
                                 }
                             }
                             Text(
-                                text = "Active now",
+                                text = if (isPartnerOnline) "Active now" else "Offline",
                                 fontSize = 11.sp,
-                                color = Color(0xFF45BD62),
+                                color = if (isPartnerOnline) Color(0xFF45BD62) else Color(0xFF8E8E93),
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -374,7 +422,27 @@ fun ChatDetailScreen(
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
-                                onClick = { isAudioCallActive = true }
+                                onClick = {
+                                    val hasMic = ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                    if (hasMic) {
+                                        val pId = partnerId.removePrefix("user_").removePrefix("partner_").toIntOrNull() ?: 1
+                                        if (!isPartnerOnline) {
+                                            Toast.makeText(context, "Offline", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            viewModel.startAudioCall(
+                                                partnerId = pId,
+                                                partnerName = partnerName,
+                                                partnerAvatar = partnerAvatar,
+                                                isVerified = isVerified
+                                            )
+                                        }
+                                    } else {
+                                        micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                }
                             )
                             .testTag("chat_audio_call_btn"),
                         contentAlignment = Alignment.Center
@@ -945,27 +1013,6 @@ fun ChatDetailScreen(
                 }
             }
         }
-    }
-
-    // Audio Call Simulation Dialog / Overlay
-    if (isAudioCallActive) {
-        AudioCallScreenOverlay(
-            partnerName = partnerName,
-            partnerAvatar = partnerAvatar,
-            onEndCall = { durationStr ->
-                isAudioCallActive = false
-                val currentTime = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
-                messages.add(
-                    DetailMessage(
-                        id = UUID.randomUUID().toString(),
-                        text = "📞 Audio call ended • $durationStr",
-                        isMe = true,
-                        time = currentTime,
-                        isCallNotice = true
-                    )
-                )
-            }
-        )
     }
 }
 

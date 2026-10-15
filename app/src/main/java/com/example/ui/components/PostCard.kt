@@ -187,7 +187,7 @@ fun PostCard(
                             )
                             if (post.isVerified) {
                                 Spacer(modifier = Modifier.width(4.dp))
-                                VerifiedBadge(size = 14.dp)
+                                VerifiedBadge(size = 22.dp)
                             }
                         }
                         Row(
